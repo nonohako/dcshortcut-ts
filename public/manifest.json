@@ -1,0 +1,61 @@
+{
+    "manifest_version": 3,
+    "name": "DC ShortCut TS",
+    "version": "0.2.0",
+    "description": "DCInside 커뮤니티의 사용자 경험을 향상시키는 단축키 및 편의 기능 모음",
+    "permissions": [
+      "storage",
+      "tabs"
+    ],
+    "host_permissions": [
+      "*://*.dcinside.com/*",
+      "*://search.dcinside.com/*"
+    ],
+    "action": {
+      "default_popup": "popup.html",
+      "default_icon": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+      }
+    },
+    "background": {
+      "service_worker": "src/background/background.ts",
+      "type": "module"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "*://gall.dcinside.com/*",
+          "*://search.dcinside.com/*"
+        ],
+        "js": ["src/content-script/main.ts"],
+        "css": ["src/content-script/style.css"]
+      }
+    ],
+    "commands": {
+      "01-toggle-z-macro": {
+        "suggested_key": {
+          "default": "Alt+Z"
+        },
+        "description": "다음 글 자동 넘김 매크로 시작/중지"
+      },
+      "02-toggle-x-macro": {
+        "suggested_key": {
+          "default": "Alt+X"
+        },
+        "description": "이전 글 자동 넘김 매크로 시작/중지"
+      }
+    },
+    "web_accessible_resources": [
+      {
+        "resources": ["assets/*"],
+        "matches": ["*://*.dcinside.com/*"]
+      }
+    ],
+    "icons": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
