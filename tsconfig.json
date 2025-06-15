@@ -1,24 +1,33 @@
 {
   "compilerOptions": {
+    // 컴파일될 JavaScript 버전 설정 (최신 문법 지원)
     "target": "ESNext",
-    "useDefineForClassFields": true,
+    // 모듈 시스템 설정 (최신 import/export 문법 지원)
     "module": "ESNext",
-    "moduleResolution": "bundler",
+    // 모든 엄격한 타입-체킹 옵션 활성화
     "strict": true,
+    // [추가] 파일 이름의 대소문자를 강제로 일치시키는 옵션
+    "forceConsistentCasingInFileNames": true,
+    // JSX 처리 방식 (Vue에서는 'preserve' 사용)
     "jsx": "preserve",
-    "resolveJsonModule": true,
+    // 모듈 해석 방식
+    "moduleResolution": "bundler",
+    // 각 파일을 독립된 모듈로 처리 (Vite/Babel과 호환)
     "isolatedModules": true,
+    // CommonJS 모듈과의 호환성을 위한 설정
     "esModuleInterop": true,
+    // 사용할 라이브러리 목록 (최신 JS 기능 및 DOM API)
     "lib": ["ESNext", "DOM"],
+    // 라이브러리 파일의 타입 체크 건너뛰기
     "skipLibCheck": true,
-    "noEmit": true,
+    // baseUrl과 paths를 사용하여 절대 경로 임포트 설정
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
-    },
-    // [추가] chrome API 타입 인식
-    "types": ["@types/chrome"] 
+    }
   },
+  // TypeScript 컴파일에 포함할 파일/폴더 목록
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  // 다른 tsconfig 파일을 참조 (Vite 설정 파일용)
   "references": [{ "path": "./tsconfig.node.json" }]
 }

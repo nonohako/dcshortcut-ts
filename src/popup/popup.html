@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>DC ShortCut</title>
+  <!-- 팝업 창의 스타일을 정의하는 CSS 파일 링크 -->
+  <link rel="stylesheet" href="./popup.css">
+</head>
+<body>
+  <!-- 팝업의 전체 컨테이너 -->
+  <div id="popup-root">
+    <!-- 팝업 헤더: 제목과 버전 정보 -->
+    <header class="popup-header">
+      <h1>DC ShortCut</h1>
+      <span class="version-info">v0.1.8</span>
+    </header>
+    
+    <!-- 주요 기능 버튼: 즐겨찾기 및 설정 모달 열기 -->
+    <div class="action-buttons">
+      <button id="open-favorites-btn" class="popup-button">⭐ 즐겨찾기 열기</button>
+      <button id="open-shortcuts-btn" class="popup-button">⚙️ 단축키/설정 관리</button>
+    </div>
+
+    <!-- 상태 메시지 표시 영역 (예: 오류 메시지) -->
+    <p id="status-message" style="display:none;"></p>
+
+    <!-- 단축키 목록을 표시하는 그리드 레이아웃 -->
+    <div class="shortcut-grid">
+      <!-- 왼쪽 열: 사용자가 키를 변경할 수 있는 단축키 -->
+      <div class="shortcut-column">
+        <h2>일반 단축키</h2>
+        <!-- 이 목록은 popup.ts에 의해 동적으로 채워집니다. -->
+        <ul id="custom-shortcut-list">
+          <li>로딩 중...</li>
+        </ul>
+      </div>
+      <!-- 오른쪽 열: 기능이 고정된 복합/특수 단축키 -->
+      <div class="shortcut-column">
+        <h2>복합 단축키</h2>
+        <!-- 이 목록도 popup.ts에 의해 동적으로 채워집니다. -->
+        <ul id="fixed-shortcut-list">
+          <!-- JS로 채워짐 -->
+        </ul>
+      </div>
+    </div>
+
+    <!-- 팝업 푸터: 외부 링크 (디스코드, 후원) -->
+    <footer class="popup-footer">
+      <div class="links">
+        <a href="https://discord.gg/Jt3r9BTSg2" target="_blank">Discord</a>
+        <span>|</span>
+        <a href="https://buymeacoffee.com/nonohako" target="_blank">후원하기</a>
+      </div>
+    </footer>
+  </div>
+
+  <!--
+    팝업의 동작을 제어하는 스크립트 파일입니다.
+    TypeScript 프로젝트에서는 이 경로가 `src/popup/popup.ts`를 가리키도록 설정합니다.
+    Vite 빌드 시 이 파일은 컴파일된 JavaScript 파일로 자동 변환되어 최종 빌드 결과물에 포함됩니다.
+  -->
+  <script type="module" src="./popup.ts"></script>
+</body>
+</html>

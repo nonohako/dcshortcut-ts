@@ -1,0 +1,34 @@
+/* 게시글 번호 라벨 스타일 (가상 요소 사용) */
+td.gall_num.shortcut-labeled::before {
+    content: attr(data-shortcut-label);
+    color: #ff6600;
+    font-weight: bold;
+    margin-right: 3px;
+  }
+  
+  td.gall_num.shortcut-labeled {
+    display: flex; /* Flexbox 컨테이너로 만듦 */
+    align-items: center; /* 세로 중앙 정렬 */
+    justify-content: flex-start; /* 가로 왼쪽 정렬 (기본값) */
+  }
+  
+  @keyframes fade-out-highlight {
+    from { background-color: rgba(255, 235, 59, 0.5); } /* 시작 (노란색 반투명) */
+    to { background-color: transparent; } /* 끝 (투명) */
+  }
+  
+  /* 새로운 글임을 표시하는 마커 클래스 (기본 배경색) */
+  tr.new-post-highlight {
+    background-color: rgba(255, 235, 59, 0.5);
+    /* 애니메이션은 아직 시작되지 않음 */
+  }
+  
+  /* 애니메이션을 실제로 트리거하는 클래스 */
+  tr.new-post-highlight.highlight-start {
+    /* 2.5초 동안 fade-out 애니메이션 실행, 끝난 후 상태 유지 */
+    animation: fade-out-highlight 2.5s ease-in-out forwards;
+  }
+  
+  table.gall_list.empty tbody td {
+    height: 27px !important;
+  }
