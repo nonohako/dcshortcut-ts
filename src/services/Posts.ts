@@ -114,44 +114,35 @@ const Posts = {
      * 유효한 게시글 목록에 `[1]`, `[2]`... 와 같은 숫자 라벨을 시각적으로 추가합니다.
      */
     addNumberLabels(): void {
-        // 1. 기존에 추가했던 모든 라벨 정보를 깨끗하게 제거.
-        const previouslyLabeled = document.querySelectorAll<HTMLTableCellElement>('td.gall_num.shortcut-labeled');
-        previouslyLabeled.forEach(cell => {
+        // 1. 기존 라벨 정보 초기화
+        document.querySelectorAll<HTMLTableCellElement>('td.gall_num.shortcut-labeled').forEach(cell => {
             cell.classList.remove('shortcut-labeled');
-            delete cell.dataset.shortcutLabel;
+            // ::before 가상 요소의 content는 CSS로 제어되므로 JS에서 직접 제거할 필요 없음
         });
 
-        // 2. 페이지의 모든 유효한 행을 순서대로 수집.
+        // 2. 라벨을 붙일 유효한 행들을 수집
         const rowsToLabel: HTMLTableRowElement[] = [];
-        const tbodies = document.querySelectorAll<HTMLTableSectionElement>('table.gall_list tbody');
+        const rows = document.querySelectorAll<HTMLTableRowElement>('table.gall_list tbody tr');
 
-        tbodies.forEach((tbody, tbodyIndex) => {
-            const rowsInTbody = tbody.querySelectorAll<HTMLTableRowElement>('tr');
-            rowsInTbody.forEach(row => {
-                const numCell = row.querySelector('td.gall_num') as HTMLElement | null;
-                const titleCell = row.querySelector('td.gall_tit') as HTMLElement | null;
-                if (!numCell || !titleCell) return;
-                // [수정] querySelector의 결과를 HTMLElement | null로 캐스팅
-                const subjectCell = row.querySelector('td.gall_subject') as HTMLElement | null;
-
-                let isPostValidForLabeling = false;
-                if (tbodyIndex === 0) {
-                    if (this.isValidPost(numCell, titleCell, subjectCell)) {
-                        isPostValidForLabeling = true;
-                    }
-                } else {
-                }
-            });
+        rows.forEach(row => {
+            const numCell = row.querySelector<HTMLTableCellElement>('td.gall_num');
+            const titleCell = row.querySelector<HTMLTableCellElement>('td.gall_tit');
+            const subjectCell = row.querySelector<HTMLTableCellElement>('td.gall_subject');
+            
+            // [수정] isValidPost를 사용하여 유효한 게시글 행만 필터링
+            if (this.isValidPost(numCell, titleCell, subjectCell)) {
+                rowsToLabel.push(row);
+            }
         });
 
-        // 3. 수집된 모든 행에 대해 1번부터 순차적으로 라벨링.
+        // 3. 수집된 행에 순차적으로 라벨링
         rowsToLabel.forEach((row, index) => {
             const numCell = row.querySelector<HTMLTableCellElement>('td.gall_num');
-            if (!numCell) return;
-
-            numCell.classList.add('shortcut-labeled');
-            // CSS `::before` pseudo-element에서 이 값을 사용.
-            numCell.dataset.shortcutLabel = `[${index + 1}]`;
+            if (numCell) {
+                numCell.classList.add('shortcut-labeled');
+                // CSS에서 content: attr(data-shortcut-label) 로 사용될 데이터 설정
+                numCell.dataset.shortcutLabel = `[${index + 1}]`;
+            }
         });
     },
 

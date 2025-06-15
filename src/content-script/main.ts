@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import './main.css';
+// [수정] 콘텐츠 스크립트의 메인 CSS 파일 import 경로를 수정합니다.
+import './style.css';
 
 // Vue App and Components
 import App from '@/App.vue';
@@ -133,14 +134,10 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 // Auto-Refresher Logic (자동 새로고침 로직)
 // =================================================================
 
-/** @description 현재 탭의 ID를 저장하는 변수 */
 let myTabId: number | null = null;
 
-/**
- * @description 현재 탭이 리더인지, 새로고침이 가능한 상태인지 등을 종합하여 AutoRefresher를 시작하거나 중지합니다.
- */
 async function handleAutoRefresherState(): Promise<void> {
-  if (myTabId === null) return; // 탭 ID가 없으면 실행 불가
+  if (myTabId === null) return;
 
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getLeaderTabId' });
@@ -162,9 +159,7 @@ async function handleAutoRefresherState(): Promise<void> {
   }
 }
 
-// `window` 객체에 전역 함수로 할당하여 다른 모듈에서도 호출 가능하게 함
 window.handleAutoRefresherState = handleAutoRefresherState;
-// AutoRefresher 모듈 자체도 전역으로 할당하여 Events 모듈 등에서 접근 가능하게 함
 window.AutoRefresher = AutoRefresher;
 
 
@@ -172,40 +167,35 @@ window.AutoRefresher = AutoRefresher;
 // Observers and Initialization (DOM 옵저버 및 초기화)
 // =================================================================
 
-/**
- * @description DOM 변경을 감지하여 UI를 업데이트하는 MutationObserver를 설정합니다.
- */
 function setupObservers(): void {
-  const listObserver = new MutationObserver(() => {
-    setTimeout(() => {
-      Posts.addNumberLabels();
-      Posts.formatDates();
-    }, 150);
-  });
-
-  const listTbody = document.querySelector('table.gall_list tbody');
-  if (listTbody) {
-    listObserver.observe(listTbody, { childList: true });
-  }
-
-  const bodyObserver = new MutationObserver(() => {
-    Posts.adjustColgroupWidths();
-    const currentListTbody = document.querySelector('table.gall_list tbody');
-    if (currentListTbody) {
+  const listObserver = new MutationObserver((mutations) => {
+    if (mutations.some(m => m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
       Posts.addNumberLabels();
       Posts.formatDates();
     }
-    setupTabFocus();
-    addPrefetchHints();
   });
+
+  const bodyObserver = new MutationObserver(() => {
+    const currentListTbody = document.querySelector('table.gall_list tbody');
+    if (currentListTbody) {
+      listObserver.disconnect();
+      listObserver.observe(currentListTbody, { childList: true });
+      Posts.adjustColgroupWidths();
+      Posts.addNumberLabels();
+      Posts.formatDates();
+      addPrefetchHints();
+    }
+    setupTabFocus();
+  });
+
+  const initialListTbody = document.querySelector('table.gall_list tbody');
+  if (initialListTbody) {
+    listObserver.observe(initialListTbody, { childList: true });
+  }
   bodyObserver.observe(document.body, { childList: true, subtree: true });
 }
 
-/**
- * @description 콘텐츠 스크립트의 메인 초기화 함수.
- */
 async function initialize(): Promise<void> {
-  // 1. 현재 탭 ID 가져오기
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getMyTabId' });
     if (response?.success) {
@@ -215,55 +205,64 @@ async function initialize(): Promise<void> {
     }
   } catch (error) {
     console.error("치명적 오류: 자신의 탭 ID를 가져올 수 없습니다.", error);
-    return; // 초기화 중단
+    return;
   }
 
   console.log(`🔧 탭 ${myTabId}에 대한 초기 설정 실행 중...`);
 
-  // 2. 설정 불러오기 및 AutoRefresher 초기화
-  await settingsStore.loadSettings();
-  AutoRefresher.init(settingsStore, Posts, Events);
+  try {
+    // 1. 설정과 즐겨찾기를 먼저 불러옵니다.
+    await settingsStore.loadSettings();
+    await favoritesStore.loadProfiles();
+    console.log('[Main] 설정 및 즐겨찾기 로드 완료.');
 
-  // 3. 설정 변경 감지 및 상태 업데이트
-  settingsStore.$subscribe(() => {
-    handleAutoRefresherState();
-  });
+    // 2. 설정이 로드된 후, UI 관련 모듈들을 초기화합니다.
+    AutoRefresher.init(settingsStore, Posts, Events);
 
-  // 4. 페이지 가시성 변경 감지
-  document.addEventListener('visibilitychange', () => {
-    if (settingsStore.pauseOnInactiveEnabled) {
-      document.visibilityState === 'visible' ? handleAutoRefresherState() : AutoRefresher.stop();
-    }
-  });
-  
-  // 5. 창 포커스 이벤트 감지 (새 글 하이라이트 등)
-  window.addEventListener('focus', () => {
-    if (AutoRefresher.timerId) AutoRefresher.restoreOriginalTitle();
-    const newPosts = document.querySelectorAll<HTMLElement>('tr.new-post-highlight');
-    if (newPosts.length > 0) {
-      newPosts.forEach(post => {
-        post.classList.add('highlight-start');
-        setTimeout(() => post.classList.remove('new-post-highlight', 'highlight-start'), 2500);
-      });
-    }
-  });
+    // 3. 페이지의 초기 UI를 렌더링하고 기능을 적용합니다.
+    Posts.adjustColgroupWidths();
+    Posts.addNumberLabels();
+    Posts.formatDates();
+    setupTabFocus();
+    focusSubjectInputOnWritePage();
+    addPrefetchHints();
+    handlePageLoadScroll();
+    SearchPageEnhancer.init();
+    
+    // 4. DOM 변경 감지 옵저버를 설정합니다.
+    setupObservers();
 
-  // 6. 페이지별 기능 실행
-  SearchPageEnhancer.init();
-  Posts.adjustColgroupWidths();
-  Posts.addNumberLabels();
-  Posts.formatDates();
-  setupTabFocus();
-  focusSubjectInputOnWritePage();
-  addPrefetchHints();
-  handlePageLoadScroll();
-  setupObservers();
-  
-  // 7. 페이지 로드 시 매크로 및 자동 새로고침 상태 확인
-  await Events.triggerMacroNavigation();
-  setTimeout(handleAutoRefresherState, 100);
+    // 5. 페이지 로드 시 매크로 실행 여부를 확인합니다.
+    await Events.triggerMacroNavigation();
 
-  console.log('✅ DCInside ShortCut 준비 완료!');
+    // 6. 설정 변경 및 페이지 상태에 따른 리스너들을 등록합니다.
+    settingsStore.$subscribe(() => {
+        handleAutoRefresherState();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (settingsStore.pauseOnInactiveEnabled) {
+            document.visibilityState === 'visible' ? handleAutoRefresherState() : AutoRefresher.stop();
+        }
+    });
+    window.addEventListener('focus', () => {
+        if (AutoRefresher.timerId) AutoRefresher.restoreOriginalTitle();
+        const newPosts = document.querySelectorAll<HTMLElement>('tr.new-post-highlight');
+        if (newPosts.length > 0) {
+            newPosts.forEach(post => {
+                post.classList.add('highlight-start');
+                setTimeout(() => post.classList.remove('new-post-highlight', 'highlight-start'), 2500);
+            });
+        }
+    });
+
+    // 7. 모든 설정이 끝난 후, 자동 새로고침 상태를 최종적으로 확인합니다.
+    setTimeout(handleAutoRefresherState, 100);
+
+    console.log('✅ DCInside ShortCut 준비 완료!');
+
+  } catch (error) {
+    console.error('[Main] 초기화 중 심각한 오류 발생:', error);
+  }
 }
 
 // =================================================================
@@ -275,7 +274,6 @@ if (document.readyState === 'loading') {
   initialize();
 }
 
-// Vue 앱을 마운트할 DOM 요소를 생성하고 body에 추가합니다.
 const mountPoint = document.createElement('div');
 mountPoint.id = 'dc-ShortCut-app';
 document.body.appendChild(mountPoint);
