@@ -1,34 +1,73 @@
-/* 게시글 번호 라벨 스타일 (가상 요소 사용) */
-td.gall_num.shortcut-labeled::before {
-    content: attr(data-shortcut-label);
-    color: #ff6600;
-    font-weight: bold;
-    margin-right: 3px;
+/*
+ * DCInside ShortCut 확장 프로그램의 콘텐츠 스크립트 전용 스타일시트
+ */
+
+/* ==========================================================================
+   게시글 번호 라벨 스타일
+   ========================================================================== */
+
+/*
+ * 'shortcut-labeled' 클래스가 적용된 게시글 번호(td.gall_num) 셀의 앞에
+ * data-shortcut-label 속성값(예: "[1]")을 가상 요소(pseudo-element)로 추가합니다.
+ */
+ td.gall_num.shortcut-labeled::before {
+  content: attr(data-shortcut-label); /* data-shortcut-label 속성의 값을 내용으로 사용 */
+  color: #ff6600; /* 눈에 띄는 주황색 계열 색상 */
+  font-weight: bold; /* 굵은 글씨체 */
+  margin-right: 3px; /* 원래 숫자와의 간격 */
+}
+
+/*
+ * 라벨이 추가된 셀을 Flexbox 컨테이너로 만들어,
+ * 가상 요소와 원래 숫자 텍스트를 세로 중앙에 정렬합니다.
+ */
+td.gall_num.shortcut-labeled {
+  display: flex;
+  align-items: center; /* 세로 중앙 정렬 */
+  justify-content: flex-start; /* 가로 왼쪽 정렬 */
+}
+
+/* ==========================================================================
+   새로운 글 하이라이트 애니메이션
+   ========================================================================== */
+
+/*
+ * 'fade-out-highlight'라는 이름의 keyframes 애니메이션을 정의합니다.
+ * 배경색이 반투명 노란색에서 투명으로 서서히 변하도록 합니다.
+ */
+@keyframes fade-out-highlight {
+  from {
+    background-color: rgba(255, 235, 59, 0.5); /* 시작 색상 (노란색 반투명) */
   }
-  
-  td.gall_num.shortcut-labeled {
-    display: flex; /* Flexbox 컨테이너로 만듦 */
-    align-items: center; /* 세로 중앙 정렬 */
-    justify-content: flex-start; /* 가로 왼쪽 정렬 (기본값) */
+  to {
+    background-color: transparent; /* 종료 색상 (투명) */
   }
-  
-  @keyframes fade-out-highlight {
-    from { background-color: rgba(255, 235, 59, 0.5); } /* 시작 (노란색 반투명) */
-    to { background-color: transparent; } /* 끝 (투명) */
-  }
-  
-  /* 새로운 글임을 표시하는 마커 클래스 (기본 배경색) */
-  tr.new-post-highlight {
-    background-color: rgba(255, 235, 59, 0.5);
-    /* 애니메이션은 아직 시작되지 않음 */
-  }
-  
-  /* 애니메이션을 실제로 트리거하는 클래스 */
-  tr.new-post-highlight.highlight-start {
-    /* 2.5초 동안 fade-out 애니메이션 실행, 끝난 후 상태 유지 */
-    animation: fade-out-highlight 2.5s ease-in-out forwards;
-  }
-  
-  table.gall_list.empty tbody td {
-    height: 27px !important;
-  }
+}
+
+/*
+ * 자동 새로고침으로 추가된 새로운 글(tr)에 적용되는 기본 클래스입니다.
+ * 처음에는 애니메이션 없이 배경색만 적용됩니다.
+ */
+tr.new-post-highlight {
+  background-color: rgba(255, 235, 59, 0.5);
+}
+
+/*
+ * 사용자가 탭에 포커스했을 때 JavaScript에 의해 추가되는 클래스입니다.
+ * 이 클래스가 추가되는 순간, 정의된 'fade-out-highlight' 애니메이션이 시작됩니다.
+ */
+tr.new-post-highlight.highlight-start {
+  /* 2.5초 동안 애니메이션을 실행하고, 애니메이션이 끝난 후의 상태(배경색 투명)를 유지합니다. */
+  animation: fade-out-highlight 2.5s ease-in-out forwards;
+}
+
+/* ==========================================================================
+   기타 레이아웃 수정
+   ========================================================================== */
+
+/*
+ * 일부 갤러리에서 빈 목록 테이블의 높이가 비정상적으로 커지는 문제를 수정합니다.
+ */
+table.gall_list.empty tbody td {
+  height: 27px !important;
+}
