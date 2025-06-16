@@ -4,12 +4,9 @@
 
     <!-- 탭 네비게이션 -->
     <div class="tabs">
-      <button class="tab-button" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">일반
-        설정</button>
-      <button class="tab-button" :class="{ active: activeTab === 'advanced' }" @click="activeTab = 'advanced'">고급
-        기능</button>
-      <button class="tab-button" :class="{ active: activeTab === 'refresh' }" @click="activeTab = 'refresh'">자동
-        새로고침</button>
+      <button class="tab-button" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">일반 설정</button>
+      <button class="tab-button" :class="{ active: activeTab === 'advanced' }" @click="activeTab = 'advanced'">고급 기능</button>
+      <button class="tab-button" :class="{ active: activeTab === 'refresh' }" @click="activeTab = 'refresh'">자동 새로고침</button>
       <button class="tab-button" :class="{ active: activeTab === 'macros' }" @click="activeTab = 'macros'">매크로</button>
       <button class="tab-button" :class="{ active: activeTab === 'data' }" @click="activeTab = 'data'">데이터 관리</button>
     </div>
@@ -39,7 +36,7 @@
             :currentKey="settingsStore.shortcutKeys.shortcutDKey" storageKeyEnabled="shortcutDEnabled"
             storageKeyKey="shortcutDKey" @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <ShortcutToggle :label="getShortcutLabel('DRefresh')" :enabled="settingsStore.shortcutDRefreshCommentEnabled"
-            :isKeyEditable="false" @update:enabled="updateShortcutDRefreshCommentEnabled" />
+            storageKeyEnabled="shortcutDRefreshCommentEnabled" :isKeyEditable="false" @update:enabled="updateShortcutDRefreshCommentEnabled" />
         </div>
 
         <div class="shortcut-section">
@@ -67,7 +64,7 @@
             storageKeyEnabled="shortcutToggleModalKeyEnabled" storageKeyKey="shortcutToggleModalKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <ShortcutToggle label="ALT + 숫자 - 해당 번호 즐겨찾기로 바로 이동" :enabled="settingsStore.altNumberEnabled"
-            @update:enabled="updateAltNumberEnabled" :isKeyEditable="false" />
+            storageKeyEnabled="altNumberEnabled" @update:enabled="updateAltNumberEnabled" :isKeyEditable="false" />
           <ShortcutToggle :label="getShortcutLabel('PrevProfile')"
             :enabled="settingsStore.shortcutEnabled.shortcutPrevProfileEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutPrevProfileKey"
@@ -79,7 +76,7 @@
             storageKeyEnabled="shortcutNextProfileEnabled" storageKeyKey="shortcutNextProfileKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <ShortcutToggle label="Alt - 미리보기 표시" :enabled="settingsStore.favoritesPreviewEnabled"
-            @update:enabled="updateFavoritesPreviewEnabled" :isKeyEditable="false" />
+            storageKeyEnabled="favoritesPreviewEnabled" @update:enabled="updateFavoritesPreviewEnabled" :isKeyEditable="false" />
           <div class="shortcut-interval-setting" v-if="settingsStore.favoritesPreviewEnabled">
             <label for="preview-opacity" class="interval-label">미리보기 투명도</label>
             <div class="slider-container">
@@ -102,26 +99,20 @@
         <div class="shortcut-section">
           <div class="shortcut-section-title">새로운 글 자동 새로고침</div>
           <p class="shortcut-section-note">가장 마지막으로 포커스된 탭의 글 목록을 자동으로 갱신합니다.</p>
-
           <ShortcutToggle label="자동 새로고침 활성화" :enabled="settingsStore.autoRefreshEnabled"
-            @update:enabled="updateAutoRefreshEnabled" :isKeyEditable="false" />
-
-          <!-- <<< NEW: Pause on Inactive Tab Toggle >>> -->
+            storageKeyEnabled="autoRefreshEnabled" @update:enabled="updateAutoRefreshEnabled" :isKeyEditable="false" />
           <ShortcutToggle v-if="settingsStore.autoRefreshEnabled" label="비활성 탭에서 새로고침 일시중지"
             tooltipText="다른 탭을 보거나 브라우저를 최소화하면 새로고침을 멈춰 리소스를 절약합니다." :enabled="settingsStore.pauseOnInactiveEnabled"
-            @update:enabled="updatePauseOnInactiveEnabled" :isKeyEditable="false" />
-
+            storageKeyEnabled="pauseOnInactiveEnabled" @update:enabled="updatePauseOnInactiveEnabled" :isKeyEditable="false" />
           <div class="shortcut-interval-setting" v-if="settingsStore.autoRefreshEnabled">
             <label for="auto-refresh-interval" class="interval-label">새로고침 간격 (초)</label>
             <input type="number" id="auto-refresh-interval" class="interval-input"
               :value="settingsStore.autoRefreshInterval" @input="updateAutoRefreshIntervalDebounced" min="1"
               step="0.5" />
           </div>
-
           <p v-if="settingsStore.autoRefreshEnabled && settingsStore.autoRefreshInterval < 5" class="warning-note">
             <span class="warning-icon">⚠️</span> 5초 미만의 간격은 IP 차단 위험이 매우 높습니다.
           </p>
-
         </div>
       </div>
 
@@ -130,9 +121,9 @@
         <div class="shortcut-section">
           <div class="shortcut-section-title">매크로 실행 설정</div>
           <ShortcutToggle :label="getShortcutLabel('MacroZ')" :enabled="settingsStore.macroZEnabled" :isMacro="true"
-            @update:enabled="updateMacroEnabled" />
+            storageKeyEnabled="shortcutMacroZEnabled" @update:enabled="updateMacroEnabled" />
           <ShortcutToggle :label="getShortcutLabel('MacroX')" :enabled="settingsStore.macroXEnabled" :isMacro="true"
-            @update:enabled="updateMacroEnabled" />
+            storageKeyEnabled="shortcutMacroXEnabled" @update:enabled="updateMacroEnabled" />
           <div class="shortcut-interval-setting">
             <label for="macro-interval" class="interval-label">매크로 간격 (ms)
               <FootnoteTrigger :tooltipText="macroIntervalTooltipText" style="margin-left: 6px;" />
@@ -140,11 +131,9 @@
             <input type="number" id="macro-interval" class="interval-input" :value="settingsStore.macroInterval"
               @input="updateMacroIntervalDebounced" min="500" step="100" />
           </div>
-
           <p v-if="settingsStore.macroInterval < 5000" class="warning-note">
             <span class="warning-icon">⚠️</span> 5초 미만의 간격은 IP 차단 위험이 매우 높습니다.
           </p>
-
         </div>
       </div>
 
@@ -171,7 +160,8 @@
 import { ref, onMounted, computed, nextTick, type Ref, type ComputedRef } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useFavoritesStore, type FavoriteProfiles } from '@/stores/favoritesStore';
+import { useFavoritesStore } from '@/stores/favoritesStore';
+import type { FavoriteGalleries, FavoriteProfiles } from '@/stores/favoritesStore';
 import { useUiStore } from '@/stores/uiStore';
 import UI from '@/services/UI';
 import PageNavModeSelector from './PageNavModeSelector.vue';
@@ -182,10 +172,8 @@ import FootnoteTrigger from './FootnoteTrigger.vue';
 // Type Definitions (타입 정의)
 // =================================================================
 
-/** @description 탭의 종류를 나타내는 리터럴 타입 */
 type TabName = 'general' | 'advanced' | 'refresh' | 'macros' | 'data';
 
-/** @description 단축키 라벨을 생성하기 위한 액션 키 타입 */
 type ShortcutLabelKey = 'W' | 'C' | 'D' | 'R' | 'Q' | 'E' | 'F' | 'G' | 'A' | 'S' | 'Z' | 'X' |
   'PrevProfile' | 'NextProfile' | 'SubmitImagePost' | 'SubmitComment' |
   'ToggleModal' | 'DRefresh' | 'MacroZ' | 'MacroX';
@@ -210,9 +198,6 @@ let debounceTimer: number | null = null;
 // Computed Properties (계산된 속성)
 // =================================================================
 
-/**
- * @description 단축키 설정을 기반으로 동적 라벨을 생성합니다.
- */
 const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(() => {
   const keys = settingsStore.shortcutKeys;
   const defaults = settingsStore.defaultShortcutKeys;
@@ -242,18 +227,12 @@ const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(()
   };
 });
 
-/**
- * @description 주어진 액션 키에 해당하는 라벨을 반환하는 함수.
- */
 const getShortcutLabel = (action: ShortcutLabelKey): string => dynamicLabels.value[action] || action;
 
 // =================================================================
 // Event Handlers and Functions (이벤트 핸들러 및 함수)
 // =================================================================
 
-/**
- * @description 콜백 함수를 지정된 시간만큼 지연시켜 실행하는 디바운스 함수.
- */
 const debounce = (callback: () => void, delay: number = 500): void => {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = window.setTimeout(callback, delay);
@@ -265,12 +244,13 @@ const updatePageNavMode = async (mode: 'ajax' | 'full'): Promise<void> => {
 };
 
 const updateAltNumberEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
+  if (!storageKey) return;
   await settingsStore.saveAltNumberEnabled(enabled);
   UI.showAlert(`ALT + 숫자 즐겨찾기 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
 const updateShortcutEnabled = async (storageKey: string | undefined, enabled: boolean, label: string): Promise<void> => {
-  if (!storageKey) return; // storageKey가 없으면 아무것도 하지 않음
+  if (!storageKey) return;
   await settingsStore.saveShortcutEnabled(storageKey, enabled);
   UI.showAlert(`'${label}' 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
@@ -282,12 +262,13 @@ const updateMacroEnabled = async (storageKey: string | undefined, enabled: boole
 };
 
 const updateShortcutDRefreshCommentEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
+  if (!storageKey) return;
   await settingsStore.saveShortcutDRefreshCommentEnabled(enabled);
   UI.showAlert(`'${getShortcutLabel('DRefresh')}' 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
 const updateShortcutKey = async (storageKey: string | undefined, newKey: string, label: string): Promise<void> => {
-  if (!storageKey) return; // storageKey가 없으면 아무것도 하지 않음
+  if (!storageKey) return;
   const action = storageKey.replace('shortcut', '').replace('Key', '');
   const isAltRequired = ['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(action);
   const result = await settingsStore.saveShortcutKey(storageKey, newKey, isAltRequired);
@@ -300,6 +281,7 @@ const updateShortcutKey = async (storageKey: string | undefined, newKey: string,
 };
 
 const updateAutoRefreshEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
+  if (!storageKey) return;
   await settingsStore.saveAutoRefreshEnabled(enabled);
   UI.showAlert(`자동 새로고침 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
@@ -333,6 +315,7 @@ const updateMacroIntervalDebounced = (event: Event): void => {
 };
 
 const updateFavoritesPreviewEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
+  if (!storageKey) return;
   await settingsStore.saveFavoritesPreviewEnabled(enabled);
   UI.showAlert(`즐겨찾기 미리보기 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
@@ -346,11 +329,11 @@ const updatePreviewOpacityDebounced = (event: Event): void => {
 };
 
 const updatePauseOnInactiveEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
+  if (!storageKey) return;
   await settingsStore.savePauseOnInactiveEnabled(enabled);
   UI.showAlert(`비활성 탭에서 새로고침 일시중지 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
-// --- Data Management Functions ---
 const triggerRestoreInput = (): void => {
   document.getElementById('restore-favorites-input')?.click();
 };
@@ -381,117 +364,91 @@ const backupFavorites = async (): Promise<void> => {
   }
 };
 
-/**
- * @description 백업 파일을 선택했을 때 이를 읽고 복원하는 함수.
- * 데이터의 유효성을 검사하여 안전하게 복원합니다.
- * @param {Event} event - input 요소의 change 이벤트 객체.
- */
 const handleFileRestore = async (event: Event): Promise<void> => {
-  // 1. input 요소와 선택된 파일을 가져옵니다.
   const target = event.target as HTMLInputElement;
   const file = target.files?.[0];
   if (!file) return;
 
-  // 2. JSON 파일이 맞는지 확장자를 확인합니다.
   if (!file.name.endsWith('.json')) {
     UI.showAlert('JSON 파일만 복원할 수 있습니다. (.json)');
-    target.value = ''; // input 값 초기화
+    target.value = '';
     return;
   }
 
-  // 3. FileReader를 사용하여 파일 내용을 읽습니다.
   const reader = new FileReader();
-
-  // 4. 파일 읽기가 성공적으로 완료되면 실행될 콜백 함수입니다.
   reader.onload = async (e: ProgressEvent<FileReader>) => {
     try {
-      // 5. 읽어온 텍스트 데이터를 JSON 객체로 파싱합니다.
       const jsonData = e.target?.result as string;
       const parsedData = JSON.parse(jsonData);
 
-      // --- 데이터 유효성 검사 시작 ---
-
-      // 6. 최상위 데이터가 객체 형태인지 확인합니다.
       if (typeof parsedData !== 'object' || parsedData === null) {
-        throw new Error('유효하지 않은 JSON 파일 형식입니다. (파일이 객체가 아님)');
+        throw new Error('유효하지 않은 JSON 파일 형식입니다.');
       }
 
       let dataToRestore: FavoriteProfiles;
 
-      // 7. 구 버전의 백업 파일 형식인지 확인합니다. (키가 '0'~'9'의 숫자로만 이루어진 경우)
-      const isOldFormat = Object.keys(parsedData).every(key => /^[0-9]$/.test(key));
+      // --- 백업 파일 형식 감지 및 마이그레이션 로직 ---
+      const keys = Object.keys(parsedData);
+      // 1. 파일 내용의 키가 모두 한 자리 숫자인지 확인하여 구 버전 형식인지 판별
+      const isOldFormat = keys.length > 0 && keys.every(key => /^[0-9]$/.test(key));
 
       if (isOldFormat) {
-        // 7-1. 구 버전 형식이면, '기본' 프로필로 데이터를 감싸서 새로운 형식으로 변환합니다.
+        // 1-1. 구 버전 백업 파일 감지
         console.warn("구 버전 백업 파일을 감지했습니다. '기본' 프로필로 복원합니다.");
-        // 구 버전 데이터의 각 항목이 유효한지 간단히 검사합니다.
+        // 간단한 유효성 검사
         for (const key in parsedData) {
-          const item = parsedData[key];
-          if (typeof item?.galleryId !== 'string' || typeof item?.name !== 'string') {
-            throw new Error(`구 버전 데이터의 ${key}번 항목이 올바르지 않습니다.`);
-          }
+            const item = parsedData[key];
+            if (typeof item?.galleryId !== 'string' || typeof item?.name !== 'string') {
+                throw new Error(`백업 파일의 ${key}번 항목 데이터가 올바르지 않습니다.`);
+            }
         }
-        dataToRestore = { '기본': parsedData };
+        // 구 버전 데이터를 '기본' 프로필 아래에 중첩하여 새 형식으로 변환
+        dataToRestore = { '기본': parsedData as FavoriteGalleries };
       } else {
-        // 7-2. 신 버전 형식(프로필 구조)일 경우, 더 상세한 유효성 검사를 수행합니다.
+        // 1-2. 신 버전(프로필) 형식 백업 파일 유효성 검사
         for (const profileName in parsedData) {
           const profile = parsedData[profileName];
           if (typeof profile !== 'object' || profile === null) {
-            throw new Error(`'${profileName}' 프로필의 데이터 형식이 올바르지 않습니다.`);
+            throw new Error(`백업 파일의 '${profileName}' 프로필 데이터 형식이 올바르지 않습니다.`);
           }
-          // 각 프로필 내부의 즐겨찾기 항목들을 검사합니다.
           for (const key in profile) {
             const item = profile[key];
-            // 키는 '0'-'9' 사이의 숫자여야 하고, 각 항목은 name, galleryId, galleryType을 포함해야 합니다.
-            if (!/^[0-9]$/.test(key) ||
-              typeof item?.name !== 'string' ||
-              typeof item?.galleryId !== 'string' ||
-              !['board', 'mgallery', 'mini'].includes(item?.galleryType)) {
+            if (!/^[0-9]$/.test(key) || typeof item?.name !== 'string' || typeof item?.galleryId !== 'string' || !['board', 'mgallery', 'mini'].includes(item?.galleryType)) {
               throw new Error(`'${profileName}' 프로필의 즐겨찾기 내용(키: ${key})이 올바르지 않습니다.`);
             }
           }
         }
-        // 모든 검사를 통과했으면, 데이터를 복원할 데이터로 확정합니다.
         dataToRestore = parsedData as FavoriteProfiles;
       }
-      // --- 데이터 유효성 검사 종료 ---
+      // --- 마이그레이션 로직 종료 ---
 
-      // 8. 사용자에게 최종 확인을 받습니다.
       const confirmed = window.confirm('현재 모든 즐겨찾기 프로필을 선택한 파일의 내용으로 덮어쓰시겠습니까? 이 작업은 되돌릴 수 없습니다.');
       if (!confirmed) {
         UI.showAlert('즐겨찾기 복원이 취소되었습니다.');
-        return; // 사용자가 취소하면 여기서 함수 종료
+        return;
       }
 
-      // 9. 스토어의 액션을 호출하여 검증된 데이터로 전체 상태를 교체합니다.
       await favoritesStore.clearAndSetFavorites(dataToRestore);
       UI.showAlert('즐겨찾기가 성공적으로 복원되었습니다.');
 
     } catch (error) {
-      // JSON 파싱 오류 또는 유효성 검사 중 발생한 오류를 처리합니다.
       if (error instanceof Error) {
         console.error('즐겨찾기 복원 중 오류:', error);
         UI.showAlert(`즐겨찾기 복원 실패: ${error.message}`);
       }
     } finally {
-      // 성공/실패 여부와 관계없이 input의 값을 비워, 동일한 파일을 다시 선택할 수 있도록 합니다.
       target.value = '';
     }
   };
-
-  // 5. 파일 읽기 중 오류가 발생했을 때의 콜백 함수입니다.
   reader.onerror = () => {
     UI.showAlert('파일을 읽는 중 오류가 발생했습니다.');
     target.value = '';
   };
-
-  // 파일 읽기를 시작합니다.
   reader.readAsText(file);
 };
 
 const closeModal = (): void => uiStore.closeModal();
 
-// --- Lifecycle Hooks ---
 onMounted(() => {
   settingsStore.loadSettings();
   requestAnimationFrame(() => {
@@ -513,7 +470,6 @@ onMounted(() => {
   z-index: 10001;
   width: 500px;
   height: 800px;
-  /* 고정 높이 */
   display: flex;
   flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -571,11 +527,6 @@ onMounted(() => {
 .tab-content {
   flex-grow: 1;
   overflow-y: auto;
-  /* This was the culprit for tooltip clipping */
-}
-
-.settings-item-spacing {
-  margin-bottom: 20px;
 }
 
 .shortcut-section {
@@ -587,7 +538,7 @@ onMounted(() => {
   border: 1px solid #e9ecef;
 }
 
-.tab-pane>.shortcut-section:last-of-type {
+.tab-pane > .shortcut-section:last-of-type {
   margin-bottom: 0;
 }
 
@@ -702,11 +653,11 @@ onMounted(() => {
   background-color: #ffca2c;
 }
 
-.shortcut-section> :deep(.shortcut-toggle) {
+.shortcut-section > :deep(.shortcut-toggle) {
   margin-bottom: 8px;
 }
 
-.shortcut-section> :deep(.shortcut-toggle:last-child) {
+.shortcut-section > :deep(.shortcut-toggle:last-child) {
   margin-bottom: 0;
 }
 
@@ -771,13 +722,9 @@ onMounted(() => {
 
 .warning-note {
   font-size: 0.8rem;
-  /* 12.8px */
   color: #c0392b;
-  /* 붉은색 계열 */
   background-color: #fbe9e7;
-  /* 연한 붉은색 배경 */
   border: 1px solid #ffab91;
-  /* 연한 붉은색 테두리 */
   border-radius: 6px;
   padding: 10px;
   margin-top: 12px;
@@ -789,6 +736,5 @@ onMounted(() => {
 .warning-icon {
   margin-right: 8px;
   font-size: 1rem;
-  /* 아이콘 크기 */
 }
 </style>

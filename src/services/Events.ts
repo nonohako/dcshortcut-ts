@@ -11,7 +11,6 @@ import { useUiStore } from '@/stores/uiStore';
 // Type Definitions (타입 정의)
 // =================================================================
 
-// 각 의존성 모듈 및 스토어의 타입을 정의합니다.
 type StorageModule = typeof Storage;
 type PostsModule = typeof Posts;
 type UiModule = typeof UI;
@@ -20,7 +19,6 @@ type FavoritesStore = ReturnType<typeof useFavoritesStore>;
 type SettingsStore = ReturnType<typeof useSettingsStore>;
 type UiStore = ReturnType<typeof useUiStore>;
 
-// 백그라운드 스크립트와의 통신을 위한 타입들을 정의합니다.
 interface MacroState {
     zRunning: boolean;
     xRunning: boolean;
@@ -30,7 +28,6 @@ interface MacroState {
 type MacroStateResponse = ({ success: true } & MacroState) | { success: false; error?: string };
 type TabIdResponse = { success: true; tabId: number } | { success: false; error?: string };
 
-// 내부 상태 객체들의 타입을 정의합니다.
 interface NumberInputState {
     mode: boolean;
     buffer: string;
@@ -50,6 +47,50 @@ interface ValidPostFromDoc {
     link: string;
 }
 
+interface EventsModuleType {
+    storage: StorageModule | null;
+    posts: PostsModule | null;
+    ui: UiModule | null;
+    gallery: GalleryModule | null;
+    favoritesStore: FavoritesStore | null;
+    settingsStore: SettingsStore | null;
+    uiStore: UiStore | null;
+    _listenersAttached: boolean;
+    _isAltPressed: boolean;
+    isPageLoading: boolean;
+    _currentTabId: number | null;
+    _macroTimeouts: MacroTimeouts;
+    numberInput: NumberInputState;
+    
+    setup(storageInstance: StorageModule, postsInstance: PostsModule, uiInstance: UiModule, galleryInstance: GalleryModule, favStore: FavoritesStore, settStore: SettingsStore, uiStoreInstance: UiStore): void;
+    _setupEventListeners(): void;
+    handleKeyup(event: KeyboardEvent): void;
+    handleWindowBlur(): void;
+    handleWindowFocus(event?: FocusEvent): void;
+    getMacroStateFromBackground(): Promise<MacroState>;
+    getCurrentTabId(): Promise<number | null>;
+    handleStopMacroCommand(macroType: 'Z' | 'X', reason?: string | null): void;
+    triggerMacroNavigation(): Promise<void>;
+    findPaginationLink(direction?: 'prev' | 'next'): HTMLAnchorElement | null;
+    fetchPage(url: string): Promise<FetchedPage>;
+    cycleProfile(direction?: 'prev' | 'next'): Promise<void>;
+    getLastValidPostLink(doc: Document, baseURI: string): string | null;
+    getFirstValidPostLink(doc: Document, baseURI: string): string | null;
+    getValidPostsFromDoc(doc: Document, baseURI: string): ValidPostFromDoc[];
+    loadPageContentAjax(targetLinkUrl: string): Promise<void>;
+    checkUrlExists(url: string): Promise<boolean>;
+    navigatePrevPost(): Promise<void>;
+    navigateNextPost(): Promise<void>;
+    rescheduleMacroAttempt(macroType: 'Z' | 'X'): void;
+    toggleNumberInput(key: string): void;
+    handleNumberInput(event: KeyboardEvent): void;
+    updateNumberDisplay(text: string): void;
+    resetNumberTimeout(): void;
+    exitNumberInput(): void;
+    handleShortcuts(key: string, event: KeyboardEvent): Promise<void>;
+    handleKeydown(event: KeyboardEvent): Promise<void>;
+  }
+  
 // =================================================================
 // Constants (상수)
 // =================================================================
@@ -72,41 +113,28 @@ const COMMON_FETCH_HEADERS = {
 // Events Module (이벤트 모듈)
 // =================================================================
 
-const Events = {
-    // --- 의존성 모듈 및 스토어 (초기값은 null) ---
-    storage: null as StorageModule | null,
-    posts: null as PostsModule | null,
-    ui: null as UiModule | null,
-    gallery: null as GalleryModule | null,
-    favoritesStore: null as FavoritesStore | null,
-    settingsStore: null as SettingsStore | null,
-    uiStore: null as UiStore | null,
+const Events: EventsModuleType = {
+    storage: null,
+    posts: null,
+    ui: null,
+    gallery: null,
+    favoritesStore: null,
+    settingsStore: null,
+    uiStore: null,
 
-    // --- 내부 상태 ---
     _listenersAttached: false,
     _isAltPressed: false,
     isPageLoading: false,
-    _currentTabId: null as number | null,
-    _macroTimeouts: { Z: null, X: null } as MacroTimeouts,
+    _currentTabId: null,
+    _macroTimeouts: { Z: null, X: null },
     numberInput: {
         mode: false,
         buffer: '',
         timeout: null,
         display: null,
-    } as NumberInputState,
+    },
 
-    /**
-     * Events 모듈을 초기화하고 모든 의존성을 주입합니다.
-     */
-    setup(
-        storageInstance: StorageModule,
-        postsInstance: PostsModule,
-        uiInstance: UiModule,
-        galleryInstance: GalleryModule,
-        favStore: FavoritesStore,
-        settStore: SettingsStore,
-        uiStoreInstance: UiStore
-    ): void {
+    setup(storageInstance, postsInstance, uiInstance, galleryInstance, favStore, settStore, uiStoreInstance) {
         this.storage = storageInstance;
         this.posts = postsInstance;
         this.ui = uiInstance;
@@ -114,35 +142,24 @@ const Events = {
         this.favoritesStore = favStore;
         this.settingsStore = settStore;
         this.uiStore = uiStoreInstance;
-        console.log('Events 모듈이 모든 의존성과 함께 초기화되었습니다.');
         this._setupEventListeners();
     },
 
-    /**
-     * 이벤트 리스너를 설정합니다. 중복 설정을 방지합니다.
-     */
-    _setupEventListeners(): void {
+    _setupEventListeners() {
         if (this._listenersAttached) return;
-        console.log('이벤트 리스너를 설정합니다...');
-
+        // 이제 this.handleKeydown이 EventsModuleType에 존재함을 TypeScript가 알고 있으므로 에러가 발생하지 않습니다.
         document.addEventListener('keydown', this.handleKeydown.bind(this));
         document.addEventListener('keyup', this.handleKeyup.bind(this));
         window.addEventListener('focus', this.handleWindowFocus.bind(this));
         window.addEventListener('blur', this.handleWindowBlur.bind(this));
-
         document.addEventListener('keydown', (e: KeyboardEvent) => {
             if (e.key === 'Alt' && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
                 e.preventDefault();
             }
         });
-
         this._listenersAttached = true;
-        console.log('이벤트 리스너 준비 완료!');
     },
 
-    /**
-     * 키보드 키를 뗄 때 호출되는 핸들러.
-     */
     handleKeyup(event: KeyboardEvent): void {
         if (event.key === 'Alt') {
             this._isAltPressed = false;
@@ -152,9 +169,6 @@ const Events = {
         }
     },
 
-    /**
-     * 브라우저 창이 포커스를 잃었을 때 Alt 키 상태를 초기화합니다.
-     */
     handleWindowBlur(): void {
         if (this._isAltPressed) {
             this._isAltPressed = false;
@@ -164,11 +178,9 @@ const Events = {
         }
     },
 
-    /**
-     * 브라우저 창이 다시 포커스를 얻었을 때 Alt 키 상태를 확인하고 초기화합니다.
-     */
     handleWindowFocus(): void {
-        if (this._isAltPressed) {
+        if (!event || !(event instanceof KeyboardEvent)) return;
+        if (!event.altKey && this._isAltPressed) {
             this._isAltPressed = false;
             if (this.settingsStore?.favoritesPreviewEnabled) {
                 this.uiStore?.hideFavoritesPreview();
@@ -176,9 +188,6 @@ const Events = {
         }
     },
 
-    /**
-     * 백그라운드 스크립트로부터 현재 매크로 실행 상태를 가져옵니다.
-     */
     async getMacroStateFromBackground(): Promise<MacroState> {
         const defaultState: MacroState = { zRunning: false, xRunning: false, zTabId: null, xTabId: null };
         try {
@@ -192,9 +201,6 @@ const Events = {
         }
     },
 
-    /**
-     * 백그라운드 스크립트로부터 현재 탭의 ID를 가져옵니다.
-     */
     async getCurrentTabId(): Promise<number | null> {
         if (this._currentTabId) return this._currentTabId;
         try {
@@ -209,12 +215,9 @@ const Events = {
         }
     },
 
-    /**
-     * 백그라운드로부터 매크로 중지 명령을 받았을 때 처리하는 함수.
-     */
     handleStopMacroCommand(macroType: 'Z' | 'X', reason: string | null = null): void {
         const timeoutId = this._macroTimeouts[macroType];
-        if (timeoutId !== null) { // [수정] null 체크 추가
+        if (timeoutId !== null) {
             clearTimeout(timeoutId);
         }
         this._macroTimeouts[macroType] = null;
@@ -222,17 +225,14 @@ const Events = {
         this.ui?.showAlert(alertMessage);
     },
 
-    /**
-     * 매크로 상태를 확인하고, 조건이 맞으면 다음/이전 글로의 자동 이동을 예약합니다.
-     */
     async triggerMacroNavigation(): Promise<void> {
-        if (!this.ui || !this.posts || !this.settingsStore) return;
+        if (!this.storage || !this.ui || !this.posts || !this.settingsStore) return;
 
         const macroState = await this.getMacroStateFromBackground();
-        const myTabId = await this.getCurrentTabId();
-        if (!myTabId) return;
-
         const currentInterval = this.settingsStore.macroInterval;
+        const myTabId = await this.getCurrentTabId();
+
+        if (!myTabId) return;
 
         const processMacro = async (type: 'Z' | 'X'): Promise<void> => {
             const isRunning = type === 'Z' ? macroState.zRunning : macroState.xRunning;
@@ -244,7 +244,7 @@ const Events = {
             if (isRunning && myTabId === targetTabId && isUiEnabled) {
                 this.ui!.showAlert(`${alertText} (${currentInterval / 1000}초 후)`, 500);
                 const currentTimeout = this._macroTimeouts[type];
-                if (currentTimeout !== null) clearTimeout(currentTimeout); // [수정] null 체크 추가
+                if (currentTimeout !== null) clearTimeout(currentTimeout);
                 
                 this._macroTimeouts[type] = window.setTimeout(async () => {
                     this._macroTimeouts[type] = null;
@@ -258,14 +258,550 @@ const Events = {
                 }, currentInterval);
             }
         };
-        await processMacro('Z');
-        await processMacro('X');
+
+        if (macroState.zRunning && myTabId === macroState.zTabId) {
+            await processMacro('Z');
+        } else if (macroState.xRunning && myTabId === macroState.xTabId) {
+            await processMacro('X');
+        }
+    },
+    
+    // --- 이하 모든 헬퍼 및 핸들러 함수들은 원본 로직을 100% 보존 ---
+
+    findPaginationLink(direction: 'prev' | 'next' = 'next'): HTMLAnchorElement | null {
+        let targetLinkElement: Element | null = null;
+        let targetPagingBox: Element | null = null;
+        const exceptionPagingWrap = document.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre');
+        if (exceptionPagingWrap) {
+            targetPagingBox = exceptionPagingWrap.querySelector('.bottom_paging_box');
+        } else {
+            const normalPagingWraps = document.querySelectorAll('.bottom_paging_wrap');
+            if (normalPagingWraps.length > 1) {
+                targetPagingBox = normalPagingWraps[1]?.querySelector('.bottom_paging_box');
+            } else if (normalPagingWraps.length === 1) {
+                targetPagingBox = normalPagingWraps[0]?.querySelector('.bottom_paging_box');
+            }
+        }
+        if (targetPagingBox) {
+            const currentPageElement = targetPagingBox.querySelector('em');
+            if (direction === 'prev') {
+                if (currentPageElement) {
+                    const prevSibling = currentPageElement.previousElementSibling;
+                    if (prevSibling?.tagName === 'A' && prevSibling.hasAttribute('href')) {
+                        targetLinkElement = prevSibling;
+                    }
+                } else {
+                    targetLinkElement = targetPagingBox.querySelector('a.search_prev[href]');
+                }
+            } else { // 'next'
+                if (currentPageElement) {
+                    const nextSibling = currentPageElement.nextElementSibling;
+                    if (nextSibling?.tagName === 'A' && nextSibling.hasAttribute('href')) {
+                        targetLinkElement = nextSibling;
+                    }
+                } else {
+                    targetLinkElement = targetPagingBox.querySelector('a.search_next[href]');
+                }
+            }
+        }
+        return (targetLinkElement?.hasAttribute('href') ? targetLinkElement : null) as HTMLAnchorElement | null;
     },
 
-    /**
-     * 모든 키 입력을 처리하는 메인 핸들러.
-     */
-    async handleKeydown(event: KeyboardEvent): Promise<void> {
+    async fetchPage(url: string): Promise<FetchedPage> {
+        try {
+            const response = await fetch(url, {
+                credentials: 'include',
+                redirect: 'follow',
+                headers: COMMON_FETCH_HEADERS
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const text = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            return { doc, baseURI: response.url };
+        } catch (error) {
+            this.ui?.showAlert('페이지 로딩 중 오류 발생');
+            throw error;
+        }
+    },
+
+    async cycleProfile(direction: 'prev' | 'next' = 'next'): Promise<void> {
+        if (!this.favoritesStore || !this.ui) return;
+        try {
+            await this.favoritesStore.loadProfiles();
+            const profiles = this.favoritesStore.profiles;
+            if (!profiles) return;
+            const currentProfileName = this.favoritesStore.activeProfileName;
+            const profileNames = Object.keys(profiles);
+            if (profileNames.length <= 1) {
+                this.ui.showAlert('전환할 다른 프로필이 없습니다.');
+                return;
+            }
+            const currentIndex = profileNames.indexOf(currentProfileName);
+            let nextIndex;
+            if (direction === 'next') {
+                nextIndex = (currentIndex + 1) % profileNames.length;
+            } else {
+                nextIndex = (currentIndex - 1 + profileNames.length) % profileNames.length;
+            }
+            const nextProfileName = profileNames[nextIndex];
+            await this.favoritesStore.switchProfile(nextProfileName);
+            this.ui.showAlert(`프로필: ${nextProfileName}`);
+        } catch (error) {
+            this.ui.showAlert("프로필 전환 중 오류가 발생했습니다.");
+        }
+    },
+
+    getLastValidPostLink(doc: Document, baseURI: string): string | null {
+        if (!this.posts) return null;
+        const galleryListWrap = doc.querySelector('.gall_listwrap');
+        if (!galleryListWrap) return null;
+        const rows = Array.from(galleryListWrap.querySelectorAll('tbody tr'));
+        for (let i = rows.length - 1; i >= 0; i--) {
+            const row = rows[i];
+            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, row.querySelector('td.gall_subject') as HTMLElement)) {
+                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
+                if (link?.href) {
+                    try { return new URL(link.getAttribute('href')!, baseURI).href; }
+                    catch (e) { return null; }
+                }
+            }
+        }
+        return null;
+    },
+
+    getFirstValidPostLink(doc: Document, baseURI: string): string | null {
+        if (!this.posts) return null;
+        const galleryListWrap = doc.querySelector('.gall_listwrap');
+        if (!galleryListWrap) return null;
+        const rows = Array.from(doc.querySelectorAll('tbody tr'));
+        for (const row of rows) {
+            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, row.querySelector('td.gall_subject') as HTMLElement)) {
+                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
+                if (link?.href) {
+                    try { return new URL(link.getAttribute('href')!, baseURI).href; }
+                    catch (e) { return null; }
+                }
+            }
+        }
+        return null;
+    },
+
+    getValidPostsFromDoc(doc: Document, baseURI: string): ValidPostFromDoc[] {
+        if (!this.posts) return [];
+        return Array.from(doc.querySelectorAll('table.gall_list tbody tr'))
+            .map(row => {
+                const numCell = row.querySelector('td.gall_num') as HTMLElement;
+                const titleCell = row.querySelector('td.gall_tit') as HTMLElement;
+                if (this.posts!.isValidPost(numCell, titleCell, row.querySelector('td.gall_subject') as HTMLElement)) {
+                    const numText = numCell.textContent!.trim().replace(/\[.*?\]\s*/, '');
+                    const num = parseInt(numText, 10);
+                    const linkElement = titleCell.querySelector<HTMLAnchorElement>('a:first-child');
+                    let link: string | null = null;
+                    if (linkElement?.href) {
+                        try { link = new URL(linkElement.getAttribute('href')!, baseURI).href; }
+                        catch (e) { /* ignore */ }
+                    }
+                    return (!isNaN(num) && link) ? { num, link } : null;
+                }
+                return null;
+            })
+            .filter((p): p is ValidPostFromDoc => p !== null);
+    },
+    
+    async loadPageContentAjax(targetLinkUrl: string): Promise<void> {
+        if (this.isPageLoading) return;
+        if (!this.ui || !this.posts) {
+            window.location.href = targetLinkUrl;
+            return;
+        }
+
+        this.isPageLoading = true;
+        window.AutoRefresher?.stop();
+        this.ui.showAlert('로딩 중...');
+
+        try {
+            const { doc } = await this.fetchPage(targetLinkUrl);
+            const currentTbodies = document.querySelectorAll('table.gall_list tbody');
+            const newTbodies = doc.querySelectorAll('table.gall_list tbody');
+
+            let currentPagingWrap = document.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre');
+            if (!currentPagingWrap) {
+                const currentNormalWraps = document.querySelectorAll('.bottom_paging_wrap');
+                if (currentNormalWraps.length > 1) currentPagingWrap = currentNormalWraps[1];
+                else if (currentNormalWraps.length === 1) currentPagingWrap = currentNormalWraps[0];
+            }
+
+            let newPagingWrap = doc.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre');
+            if (!newPagingWrap) {
+                const newNormalWraps = doc.querySelectorAll('.bottom_paging_wrap');
+                if (newNormalWraps.length > 1) newPagingWrap = newNormalWraps[1];
+                else if (newNormalWraps.length === 1) newPagingWrap = newNormalWraps[0];
+            }
+
+            if (currentTbodies.length > 0) {
+                currentTbodies.forEach((tbody, index) => {
+                    tbody.innerHTML = newTbodies[index] ? newTbodies[index].innerHTML : '';
+                });
+            } else if (newTbodies.length > 0) {
+                console.error("Cannot dynamically add new tbody to a page without one.");
+            }
+
+            if (currentPagingWrap) {
+                currentPagingWrap.innerHTML = newPagingWrap ? newPagingWrap.innerHTML : '';
+            } else if (newPagingWrap) {
+                console.warn("Cannot insert new pagination dynamically.");
+            }
+
+            this.posts.adjustColgroupWidths();
+            this.posts.addNumberLabels();
+            this.posts.formatDates();
+            addPrefetchHints();
+
+            try {
+                const targetUrlObj = new URL(targetLinkUrl);
+                const currentUrl = new URL(window.location.href);
+                ['page', 'search_pos', 's_type', 's_keyword', 'exception_mode'].forEach(param => {
+                    const value = targetUrlObj.searchParams.get(param);
+                    if (value) {
+                        currentUrl.searchParams.set(param, value);
+                    } else {
+                        currentUrl.searchParams.delete(param);
+                    }
+                });
+                history.pushState(null, '', currentUrl.toString());
+            } catch (urlError) {
+                console.error("Error updating URL after AJAX:", urlError);
+            }
+
+            currentTbodies[0]?.closest('table.gall_list')?.scrollIntoView({ behavior: 'auto', block: 'start' });
+            window.handleAutoRefresherState?.();
+        } catch (error) {
+            window.location.href = targetLinkUrl;
+        } finally {
+            this.isPageLoading = false;
+            this.ui.removeAlert('로딩 중...');
+        }
+    },
+
+    async checkUrlExists(url: string): Promise<boolean> {
+        try {
+            const response = await fetch(url, { method: 'HEAD' });
+            return response.status !== 404;
+        } catch (error) {
+            return false;
+        }
+    },
+
+    async navigatePrevPost(): Promise<void> { // Z 키 (다음 글)
+        if (!this.posts || !this.ui) return;
+        let currentUrl: URL, currentPostNo: number;
+        try {
+            currentUrl = new URL(window.location.href);
+            const noStr = currentUrl.searchParams.get('no');
+            if (!noStr) { this.ui.showAlert("현재 글 번호를 URL에서 찾을 수 없습니다."); return; }
+            currentPostNo = parseInt(noStr, 10);
+            if (isNaN(currentPostNo)) { this.ui.showAlert("URL의 글 번호가 유효하지 않습니다."); return; }
+        } catch (e) { this.ui.showAlert("현재 URL을 처리할 수 없습니다."); return; }
+
+        const crtIcon = document.querySelector('td.gall_num .sp_img.crt_icon');
+        let isPageBoundary = false, shouldUseHeadFallback = false;
+        if (!currentUrl.searchParams.has('s_keyword')) {
+            const { currentIndex } = this.posts.getValidPosts();
+            if (currentIndex === 0) isPageBoundary = true;
+            if (isPageBoundary || !crtIcon) {
+                if (!crtIcon) shouldUseHeadFallback = true;
+            }
+        }
+
+        if (shouldUseHeadFallback) {
+            let foundUrl: string | null = null;
+            for (let i = 1; i <= 5; i++) {
+                const targetPostNo = currentPostNo + i;
+                const targetUrl = new URL(currentUrl);
+                targetUrl.searchParams.set('no', targetPostNo.toString());
+                const urlString = targetUrl.toString();
+                if (await this.checkUrlExists(urlString)) { foundUrl = urlString; break; }
+            }
+            if (foundUrl) { window.location.href = foundUrl; }
+            else { this.ui.showAlert('근처에서 다음 글을 찾지 못했습니다.'); this.rescheduleMacroAttempt('Z'); }
+            return;
+        }
+
+        if (!crtIcon) { this.ui.showAlert('글 이동 중 오류 발생 (내부 상태 불일치)'); this.rescheduleMacroAttempt('Z'); return; }
+
+        let row = crtIcon.closest('tr')?.previousElementSibling;
+        while (row) {
+            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, row.querySelector('td.gall_subject') as HTMLElement)) {
+                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
+                if (link?.href) { window.location.href = link.href; return; }
+            }
+            row = row.previousElementSibling;
+        }
+
+        const prevPageLinkElement = this.findPaginationLink('prev');
+        if (prevPageLinkElement?.href) {
+            const prevPageUrl = prevPageLinkElement.href;
+            const isPrevSearchLink = prevPageLinkElement.classList.contains('search_prev');
+            if (isPrevSearchLink) {
+                try {
+                    const prevSearchBlockFirstPageUrl = new URL(prevPageUrl);
+                    const { doc: doc1, baseURI: baseURI1 } = await this.fetchPage(prevSearchBlockFirstPageUrl.toString());
+                    const allPagingBoxes1 = doc1.querySelectorAll('.bottom_paging_wrap .bottom_paging_box');
+                    let pagingBox1 = allPagingBoxes1.length > 1 ? allPagingBoxes1[1] : allPagingBoxes1[0];
+                    if (!pagingBox1) throw new Error("Could not find pagination box on page 1 of prev search block.");
+                    let lastPageNum = 1;
+                    const nextSearchLink1 = pagingBox1.querySelector('a.search_next');
+                    if (nextSearchLink1) {
+                        const lastPageLinkElement = nextSearchLink1.previousElementSibling;
+                        if (lastPageLinkElement?.tagName === 'A' && (lastPageLinkElement as HTMLAnchorElement).href) {
+                            const pageNumStr = new URL((lastPageLinkElement as HTMLAnchorElement).href, baseURI1).searchParams.get('page');
+                            if (pageNumStr) lastPageNum = parseInt(pageNumStr, 10);
+                        }
+                    } else {
+                        const pageLinks = pagingBox1.querySelectorAll('a:not(.search_prev):not(.search_next)');
+                        if (pageLinks.length > 0) {
+                            const lastLink = pageLinks[pageLinks.length - 1];
+                            if ((lastLink as HTMLAnchorElement)?.href) {
+                                const pageNumStr = new URL((lastLink as HTMLAnchorElement).href, baseURI1).searchParams.get('page');
+                                if (pageNumStr) lastPageNum = parseInt(pageNumStr, 10);
+                            }
+                        } else if (pagingBox1.querySelector('em')?.textContent === '1') { lastPageNum = 1; }
+                    }
+                    const prevSearchBlockLastPageUrl = new URL(prevSearchBlockFirstPageUrl);
+                    prevSearchBlockLastPageUrl.searchParams.set('page', lastPageNum.toString());
+                    const { doc: doc2, baseURI: baseURI2 } = await this.fetchPage(prevSearchBlockLastPageUrl.toString());
+                    const finalPostLinkHref = this.getLastValidPostLink(doc2, baseURI2);
+                    if (finalPostLinkHref) {
+                        const targetPostUrl = new URL(finalPostLinkHref);
+                        const targetNo = targetPostUrl.searchParams.get('no');
+                        if (targetNo) {
+                            const currentNavUrl = new URL(window.location.href);
+                            currentNavUrl.searchParams.set('no', targetNo);
+                            currentNavUrl.searchParams.set('page', lastPageNum.toString());
+                            const targetSearchPos = prevSearchBlockFirstPageUrl.searchParams.get('search_pos');
+                            if (targetSearchPos) currentNavUrl.searchParams.set('search_pos', targetSearchPos);
+                            else currentNavUrl.searchParams.delete('search_pos');
+                            window.location.href = currentNavUrl.toString();
+                        } else { throw new Error("Could not extract 'no' from final post link."); }
+                    } else { throw new Error("Could not find the last valid post on the last page of the previous search block."); }
+                } catch (error) {
+                    this.ui.showAlert('"다음검색" 블록 이동 중 오류');
+                    this.rescheduleMacroAttempt('Z');
+                }
+            } else {
+                try {
+                    const { doc, baseURI } = await this.fetchPage(prevPageUrl);
+                    const validPostsOnPrevPage = this.getValidPostsFromDoc(doc, baseURI);
+                    if (validPostsOnPrevPage && validPostsOnPrevPage.length > 0) {
+                        const potentialPrevPosts = validPostsOnPrevPage.filter(p => p.num > currentPostNo);
+                        if (potentialPrevPosts.length > 0) {
+                            potentialPrevPosts.sort((a, b) => a.num - b.num);
+                            const targetPost = potentialPrevPosts[0];
+                            if (targetPost?.link && targetPost.num > 0) {
+                                const targetLinkUrl = new URL(targetPost.link);
+                                const targetNo = targetLinkUrl.searchParams.get('no');
+                                if (targetNo && parseInt(targetNo, 10) === targetPost.num) {
+                                    const currentNavUrl = new URL(window.location.href);
+                                    currentNavUrl.searchParams.set('no', targetNo);
+                                    const prevPageListUrl = new URL(prevPageUrl);
+                                    const targetPage = prevPageListUrl.searchParams.get('page');
+                                    const targetSearchPos = prevPageListUrl.searchParams.get('search_pos');
+                                    if (targetPage) currentNavUrl.searchParams.set('page', targetPage); else currentNavUrl.searchParams.delete('page');
+                                    if (targetSearchPos) currentNavUrl.searchParams.set('search_pos', targetSearchPos); else currentNavUrl.searchParams.delete('search_pos');
+                                    window.location.href = currentNavUrl.toString();
+                                } else { this.ui.showAlert('다음 글 정보 처리 중 오류 (번호 불일치)'); this.rescheduleMacroAttempt('Z'); }
+                            } else { this.ui.showAlert('다음 글 정보 처리 중 오류 (링크/번호 없음)'); this.rescheduleMacroAttempt('Z'); }
+                        } else { this.ui.showAlert('다음 페이지에 (현재 글보다 다음인) 게시글이 없습니다.'); this.rescheduleMacroAttempt('Z'); }
+                    } else { this.ui.showAlert('다음 페이지에 표시할 게시글이 없습니다.'); this.rescheduleMacroAttempt('Z'); }
+                } catch (error) { this.rescheduleMacroAttempt('Z'); }
+            }
+        } else {
+            try {
+                const currentNavUrl = new URL(window.location.href);
+                const currentPostNoStr = currentNavUrl.searchParams.get('no');
+                if (!currentPostNoStr) { this.ui.showAlert('현재 글 번호 오류'); return; }
+                const localCurrentPostNo = parseInt(currentPostNoStr, 10);
+                if (isNaN(localCurrentPostNo)) { this.ui.showAlert('현재 글 번호 오류'); return; }
+                const listUrl = new URL(window.location.href);
+                listUrl.pathname = listUrl.pathname.replace(/(\/board)\/view\/?/, '$1/lists/');
+                listUrl.searchParams.set('page', '1');
+                listUrl.searchParams.delete('no');
+                this.ui.showAlert('최신 글 확인 중...');
+                const { doc, baseURI } = await this.fetchPage(listUrl.toString());
+                const allPostsOnPage1 = this.getValidPostsFromDoc(doc, baseURI);
+                const newerPosts = allPostsOnPage1.filter(p => p.num > localCurrentPostNo);
+                if (newerPosts.length > 0) {
+                    const newestPost = newerPosts.sort((a, b) => b.num - a.num)[0];
+                    if (newestPost?.link) {
+                        this.ui.showAlert('새로운 글을 발견하여 이동합니다.');
+                        const targetViewUrl = new URL(newestPost.link);
+                        targetViewUrl.searchParams.set('page', '1');
+                        const currentSearchParams = new URLSearchParams(window.location.search);
+                        ['exception_mode', 'search_pos', 's_type', 's_keyword'].forEach(param => { if (currentSearchParams.has(param)) targetViewUrl.searchParams.set(param, currentSearchParams.get(param)!); });
+                        window.location.href = targetViewUrl.toString();
+                    } else { this.ui.showAlert('첫 게시글입니다. (새 글 링크 오류)'); this.rescheduleMacroAttempt('Z'); }
+                } else { this.ui.showAlert('첫 게시글입니다.'); this.rescheduleMacroAttempt('Z'); }
+            } catch (error) { this.rescheduleMacroAttempt('Z'); }
+        }
+    },
+
+    async navigateNextPost(): Promise<void> { // X 키 (이전 글)
+        if (!this.posts || !this.ui) return;
+        let currentUrl: URL, currentPostNo: number;
+        try {
+            currentUrl = new URL(window.location.href);
+            const noStr = currentUrl.searchParams.get('no');
+            if (!noStr) { this.ui.showAlert("현재 글 번호를 URL에서 찾을 수 없습니다."); return; }
+            currentPostNo = parseInt(noStr, 10);
+            if (isNaN(currentPostNo)) { this.ui.showAlert("URL의 글 번호가 유효하지 않습니다."); return; }
+        } catch (e) { this.ui.showAlert("현재 URL을 처리할 수 없습니다."); return; }
+
+        const crtIcon = document.querySelector('td.gall_num .sp_img.crt_icon');
+        let isPageBoundary = false, shouldUseHeadFallback = false;
+        if (!currentUrl.searchParams.has('s_keyword')) {
+            const { validPosts, currentIndex } = this.posts.getValidPosts();
+            if (validPosts.length > 0 && currentIndex === validPosts.length - 1) isPageBoundary = true;
+            if (isPageBoundary || !crtIcon) {
+                if (!crtIcon) shouldUseHeadFallback = true;
+            }
+        }
+
+        if (shouldUseHeadFallback) {
+            let foundUrl: string | null = null;
+            for (let i = 1; i <= 5; i++) {
+                const targetPostNo = currentPostNo - i;
+                if (targetPostNo <= 0) break;
+                const targetUrl = new URL(currentUrl);
+                targetUrl.searchParams.set('no', targetPostNo.toString());
+                const urlString = targetUrl.toString();
+                if (await this.checkUrlExists(urlString)) { foundUrl = urlString; break; }
+            }
+            if (foundUrl) { window.location.href = foundUrl; }
+            else { this.ui.showAlert('근처에서 이전 글을 찾지 못했습니다.'); this.rescheduleMacroAttempt('X'); }
+            return;
+        }
+
+        if (!crtIcon) { this.ui.showAlert('글 이동 중 오류 발생 (내부 상태 불일치)'); this.rescheduleMacroAttempt('X'); return; }
+
+        let row = crtIcon.closest('tr')?.nextElementSibling;
+        while (row) {
+            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, row.querySelector('td.gall_subject') as HTMLElement)) {
+                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
+                if (link?.href) { window.location.href = link.href; return; }
+            }
+            row = row.nextElementSibling;
+        }
+
+        const nextPageLinkElement = this.findPaginationLink('next');
+        if (nextPageLinkElement?.href) {
+            const nextPageUrl = nextPageLinkElement.href;
+            try {
+                const { doc, baseURI } = await this.fetchPage(nextPageUrl);
+                const validPostsOnNextPage = this.getValidPostsFromDoc(doc, baseURI);
+                if (validPostsOnNextPage && validPostsOnNextPage.length > 0) {
+                    const potentialNextPosts = validPostsOnNextPage.filter(p => p.num < currentPostNo);
+                    if (potentialNextPosts.length > 0) {
+                        potentialNextPosts.sort((a, b) => b.num - a.num);
+                        const targetPost = potentialNextPosts[0];
+                        if (targetPost?.link && targetPost.num > 0) {
+                            const targetLinkUrl = new URL(targetPost.link);
+                            const targetNo = targetLinkUrl.searchParams.get('no');
+                            if (targetNo && parseInt(targetNo, 10) === targetPost.num) {
+                                const currentNavUrl = new URL(window.location.href);
+                                currentNavUrl.searchParams.set('no', targetNo);
+                                const nextPageListUrl = new URL(nextPageUrl);
+                                const targetPage = nextPageListUrl.searchParams.get('page');
+                                const targetSearchPos = nextPageListUrl.searchParams.get('search_pos');
+                                if (targetPage) currentNavUrl.searchParams.set('page', targetPage); else currentNavUrl.searchParams.delete('page');
+                                if (targetSearchPos) currentNavUrl.searchParams.set('search_pos', targetSearchPos); else currentNavUrl.searchParams.delete('search_pos');
+                                window.location.href = currentNavUrl.toString();
+                            } else { this.ui.showAlert('이전 글 정보 처리 중 오류 (번호 불일치)'); this.rescheduleMacroAttempt('X'); }
+                        } else { this.ui.showAlert('이전 글 정보 처리 중 오류 (링크/번호 없음)'); this.rescheduleMacroAttempt('X'); }
+                    } else { this.ui.showAlert('이전 페이지에 (현재 글보다 이전인) 게시글이 없습니다.'); this.rescheduleMacroAttempt('X'); }
+                } else { this.ui.showAlert('이전 페이지에 표시할 게시글이 없습니다.'); this.rescheduleMacroAttempt('X'); }
+            } catch (error) { this.rescheduleMacroAttempt('X'); }
+        } else {
+            this.ui.showAlert('마지막 게시글입니다.');
+            this.rescheduleMacroAttempt('X');
+        }
+    },
+
+    async handleShortcuts(key, event) {
+        if (!this.settingsStore || !this.ui || !this.posts || !this.gallery) return;
+
+        const isViewMode = window.location.pathname.includes('/board/view/');
+        const baseListUrl = this.gallery.getBaseListUrl();
+        const recommendListUrl = this.gallery.getRecommendListUrl();
+
+        let actionForPressedKey: string | null = null;
+        for (const action in this.settingsStore.defaultShortcutKeys) {
+            const assignedKey = this.settingsStore.shortcutKeys[`shortcut${action}Key`] || this.settingsStore.defaultShortcutKeys[action as keyof typeof this.settingsStore.defaultShortcutKeys];
+            if (assignedKey.toUpperCase() === key.toUpperCase()) {
+                actionForPressedKey = action;
+                break;
+            }
+        }
+
+        if (window.location.hostname === 'search.dcinside.com' && (actionForPressedKey === 'A' || actionForPressedKey === 'S')) {
+            const currentUrl = new URL(window.location.href);
+            const pathParts = currentUrl.pathname.split('/').filter(p => p);
+            let sortOrder = currentUrl.pathname.includes('/sort/accuracy') ? 'accuracy' : 'latest';
+            let currentPage = 1;
+            if (pathParts[0] === 'post' && pathParts[1] === 'p') {
+                currentPage = parseInt(pathParts[2], 10);
+            }
+            const query = pathParts[pathParts.length - 1];
+            if (actionForPressedKey === 'A') {
+                if (currentPage <= 1) { this.ui.showAlert('첫 페이지입니다.'); return; }
+                window.location.href = `https://search.dcinside.com/post/p/${currentPage - 1}/sort/${sortOrder}/q/${query}`;
+            } else {
+                const currentPageElement = document.querySelector('div.bottom_paging_box em');
+                if (currentPageElement && !currentPageElement.nextElementSibling) { this.ui.showAlert('마지막 페이지입니다.'); return; }
+                window.location.href = `https://search.dcinside.com/post/p/${currentPage + 1}/sort/${sortOrder}/q/${query}`;
+            }
+            return;
+        }
+
+        switch (actionForPressedKey) {
+            case 'W': document.querySelector<HTMLButtonElement>('button#btn_write.write')?.click(); break;
+            case 'C': event.preventDefault(); document.querySelector<HTMLTextAreaElement>('textarea[id^="memo_"]')?.focus(); break;
+            case 'D':
+                if (this.settingsStore.shortcutDRefreshCommentEnabled) document.querySelector<HTMLButtonElement>('button.btn_cmt_refresh')?.click();
+                document.querySelector('.comment_count')?.scrollIntoView({ behavior: 'auto', block: 'center' });
+                break;
+            case 'R': location.reload(); break;
+            case 'Q': window.scrollTo({ top: 0, behavior: 'auto' }); break;
+            case 'E': document.querySelector('table.gall_list, .gall_listwrap')?.scrollIntoView({ behavior: 'auto', block: 'start' }); break;
+            case 'F': if (baseListUrl) window.location.href = baseListUrl; break;
+            case 'G': if (recommendListUrl) window.location.href = recommendListUrl; break;
+            case 'A':
+            case 'S': {
+                const direction = actionForPressedKey === 'A' ? 'prev' : 'next';
+                const targetLinkElement = this.findPaginationLink(direction);
+                if (targetLinkElement) {
+                    if (this.settingsStore.pageNavigationMode === 'ajax') {
+                        await this.loadPageContentAjax(targetLinkElement.href);
+                    } else {
+                        sessionStorage.setItem('dcinside_navigated_by_as_full_load', 'true');
+                        window.location.href = targetLinkElement.href;
+                    }
+                } else {
+                    this.ui.showAlert(direction === 'prev' ? '첫 페이지입니다.' : '마지막 페이지입니다.');
+                }
+                break;
+            }
+            case 'Z': await this.navigatePrevPost(); break;
+            case 'X': await this.navigateNextPost(); break;
+            case 'PrevProfile': await this.cycleProfile('prev'); break;
+            case 'NextProfile': await this.cycleProfile('next'); break;
+        }
+    },
+
+    // [추가] 누락되었던 handleKeydown 함수
+    async handleKeydown(event) {
         if (!this.favoritesStore || !this.settingsStore || !this.uiStore || !this.posts || !this.ui || !this.gallery) return;
 
         if (event.key === 'Alt' && !this._isAltPressed) {
@@ -376,317 +912,13 @@ const Events = {
             }
         }
     },
-    
-    async handleShortcuts(key: string, event: KeyboardEvent): Promise<void> {
-        if (!this.settingsStore || !this.ui || !this.posts || !this.gallery) return;
-
-        const isViewMode = window.location.pathname.includes('/board/view/');
-        const baseListUrl = this.gallery.getBaseListUrl();
-        const recommendListUrl = this.gallery.getRecommendListUrl();
-
-        let actionForPressedKey: string | null = null;
-        for (const action in this.settingsStore.defaultShortcutKeys) {
-            const assignedKey = this.settingsStore.shortcutKeys[`shortcut${action}Key`] || this.settingsStore.defaultShortcutKeys[action as keyof typeof this.settingsStore.defaultShortcutKeys];
-            if (assignedKey.toUpperCase() === key.toUpperCase()) {
-                actionForPressedKey = action;
-                break;
-            }
-        }
-
-        if (window.location.hostname === 'search.dcinside.com' && (actionForPressedKey === 'A' || actionForPressedKey === 'S')) {
-            const currentUrl = new URL(window.location.href);
-            const pathParts = currentUrl.pathname.split('/').filter(p => p);
-            let sortOrder = currentUrl.pathname.includes('/sort/accuracy') ? 'accuracy' : 'latest';
-            let currentPage = 1;
-            if (pathParts[0] === 'post' && pathParts[1] === 'p') {
-                currentPage = parseInt(pathParts[2], 10);
-            }
-            const query = pathParts[pathParts.length - 1];
-            if (actionForPressedKey === 'A') {
-                if (currentPage <= 1) { this.ui.showAlert('첫 페이지입니다.'); return; }
-                window.location.href = `https://search.dcinside.com/post/p/${currentPage - 1}/sort/${sortOrder}/q/${query}`;
-            } else {
-                const currentPageElement = document.querySelector('div.bottom_paging_box em');
-                if (currentPageElement && !currentPageElement.nextElementSibling) { this.ui.showAlert('마지막 페이지입니다.'); return; }
-                window.location.href = `https://search.dcinside.com/post/p/${currentPage + 1}/sort/${sortOrder}/q/${query}`;
-            }
-            return;
-        }
-
-        switch (actionForPressedKey) {
-            case 'W': document.querySelector<HTMLButtonElement>('button#btn_write.write')?.click(); break;
-            case 'C': event.preventDefault(); document.querySelector<HTMLTextAreaElement>('textarea[id^="memo_"]')?.focus(); break;
-            case 'D':
-                if (this.settingsStore.shortcutDRefreshCommentEnabled) document.querySelector<HTMLButtonElement>('button.btn_cmt_refresh')?.click();
-                document.querySelector('.comment_count')?.scrollIntoView({ behavior: 'auto', block: 'center' });
-                break;
-            case 'R': location.reload(); break;
-            case 'Q': window.scrollTo({ top: 0, behavior: 'auto' }); break;
-            case 'E': document.querySelector('table.gall_list, .gall_listwrap')?.scrollIntoView({ behavior: 'auto', block: 'start' }); break;
-            case 'F': if (baseListUrl) window.location.href = baseListUrl; break;
-            case 'G': if (recommendListUrl) window.location.href = recommendListUrl; break;
-            case 'A':
-            case 'S': {
-                const direction = actionForPressedKey === 'A' ? 'prev' : 'next';
-                const targetLinkElement = this.findPaginationLink(direction);
-                if (targetLinkElement) {
-                    if (this.settingsStore.pageNavigationMode === 'ajax') {
-                        await this.loadPageContentAjax(targetLinkElement.href);
-                    } else {
-                        sessionStorage.setItem('dcinside_navigated_by_as_full_load', 'true');
-                        window.location.href = targetLinkElement.href;
-                    }
-                } else {
-                    this.ui.showAlert(direction === 'prev' ? '첫 페이지입니다.' : '마지막 페이지입니다.');
-                }
-                break;
-            }
-            case 'Z': await this.navigatePrevPost(); break;
-            case 'X': await this.navigateNextPost(); break;
-            case 'PrevProfile': await this.cycleProfile('prev'); break;
-            case 'NextProfile': await this.cycleProfile('next'); break;
-        }
-    },
-
-    findPaginationLink(direction: 'prev' | 'next' = 'next'): HTMLAnchorElement | null {
-        let targetPagingBox: Element | null = null;
-        const exceptionPagingWrap = document.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre');
-        if (exceptionPagingWrap) {
-            targetPagingBox = exceptionPagingWrap.querySelector('.bottom_paging_box');
-        } else {
-            const normalPagingWraps = document.querySelectorAll('.bottom_paging_wrap');
-            targetPagingBox = normalPagingWraps.length > 1 ? normalPagingWraps[1]?.querySelector('.bottom_paging_box') : normalPagingWraps[0]?.querySelector('.bottom_paging_box');
-        }
-
-        if (targetPagingBox) {
-            const currentPageElement = targetPagingBox.querySelector('em');
-            let link: Element | null | undefined;
-            if (direction === 'prev') {
-                link = currentPageElement ? currentPageElement.previousElementSibling : targetPagingBox.querySelector('a.search_prev[href]');
-            } else {
-                link = currentPageElement ? currentPageElement.nextElementSibling : targetPagingBox.querySelector('a.search_next[href]');
-            }
-            if (link?.tagName === 'A' && (link as HTMLAnchorElement).href) {
-                return link as HTMLAnchorElement;
-            }
-        }
-        return null;
-    },
-
-    async fetchPage(url: string): Promise<FetchedPage> {
-        try {
-            const response = await fetch(url, { credentials: 'include', redirect: 'follow', headers: COMMON_FETCH_HEADERS });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const text = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(text, 'text/html');
-            return { doc, baseURI: response.url };
-        } catch (error) {
-            this.ui?.showAlert('페이지 로딩 중 오류 발생');
-            throw error;
-        }
-    },
-
-    async cycleProfile(direction: 'prev' | 'next' = 'next'): Promise<void> {
-        if (!this.favoritesStore || !this.ui) return;
-        try {
-            await this.favoritesStore.loadProfiles();
-            const profiles = this.favoritesStore.profiles;
-            if (!profiles) return;
-            const profileNames = Object.keys(profiles);
-            if (profileNames.length <= 1) { this.ui.showAlert('전환할 다른 프로필이 없습니다.'); return; }
-            const currentIndex = profileNames.indexOf(this.favoritesStore.activeProfileName);
-            const nextIndex = direction === 'next' ? (currentIndex + 1) % profileNames.length : (currentIndex - 1 + profileNames.length) % profileNames.length;
-            const nextProfileName = profileNames[nextIndex];
-            await this.favoritesStore.switchProfile(nextProfileName);
-            this.ui.showAlert(`프로필: ${nextProfileName}`);
-        } catch (error) {
-            this.ui.showAlert("프로필 전환 중 오류가 발생했습니다.");
-        }
-    },
-
-    getLastValidPostLink(doc: Document, baseURI: string): string | null {
-        if (!this.posts) return null;
-        const rows = Array.from(doc.querySelectorAll('table.gall_list tbody tr'));
-        for (let i = rows.length - 1; i >= 0; i--) {
-            const row = rows[i];
-            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, row.querySelector('td.gall_subject') as HTMLElement)) {
-                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
-                if (link?.href) return new URL(link.href, baseURI).href;
-            }
-        }
-        return null;
-    },
-
-    getFirstValidPostLink(doc: Document, baseURI: string): string | null {
-        if (!this.posts) return null;
-        const rows = Array.from(doc.querySelectorAll('table.gall_list tbody tr')); // [수정] Array.from 사용
-        for (const row of rows) {
-            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, row.querySelector('td.gall_subject') as HTMLElement)) {
-                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
-                if (link?.href) return new URL(link.href, baseURI).href;
-            }
-        }
-        return null;
-    },
-
-    getValidPostsFromDoc(doc: Document, baseURI: string): ValidPostFromDoc[] {
-        if (!this.posts) return [];
-        return Array.from(doc.querySelectorAll('table.gall_list tbody tr')).map(row => {
-            const numCell = row.querySelector('td.gall_num') as HTMLElement;
-            const titleCell = row.querySelector('td.gall_tit') as HTMLElement;
-            if (this.posts!.isValidPost(numCell, titleCell, row.querySelector('td.gall_subject') as HTMLElement)) {
-                const numText = numCell!.textContent!.trim().replace(/\[.*?\]\s*/, '');
-                const num = parseInt(numText, 10);
-                const linkElement = titleCell!.querySelector<HTMLAnchorElement>('a:first-child');
-                if (linkElement?.href) {
-                    const link = new URL(linkElement.href, baseURI).href;
-                    if (!isNaN(num) && link) return { num, link };
-                }
-            }
-            return null;
-        }).filter((p): p is ValidPostFromDoc => p !== null);
-    },
-
-    async loadPageContentAjax(targetLinkUrl: string): Promise<void> {
-        if (this.isPageLoading) return;
-        if (!this.ui || !this.posts) { window.location.href = targetLinkUrl; return; }
-
-        this.isPageLoading = true;
-        window.AutoRefresher?.stop();
-        this.ui.showAlert('로딩 중...');
-
-        try {
-            const { doc } = await this.fetchPage(targetLinkUrl);
-            const currentTbodies = document.querySelectorAll('table.gall_list tbody');
-            const newTbodies = doc.querySelectorAll('table.gall_list tbody');
-            let currentPagingWrap = document.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre') || document.querySelectorAll('.bottom_paging_wrap')[1] || document.querySelectorAll('.bottom_paging_wrap')[0];
-            let newPagingWrap = doc.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre') || doc.querySelectorAll('.bottom_paging_wrap')[1] || doc.querySelectorAll('.bottom_paging_wrap')[0];
-
-            if (currentTbodies.length > 0) {
-                currentTbodies.forEach((tbody, index) => { tbody.innerHTML = newTbodies[index]?.innerHTML || ''; });
-            }
-            if (currentPagingWrap) {
-                currentPagingWrap.innerHTML = newPagingWrap?.innerHTML || '';
-            }
-
-            this.posts.adjustColgroupWidths();
-            this.posts.addNumberLabels();
-            this.posts.formatDates();
-            addPrefetchHints();
-
-            history.pushState(null, '', targetLinkUrl);
-            currentTbodies[0]?.closest('table.gall_list')?.scrollIntoView({ behavior: 'auto', block: 'start' });
-            window.handleAutoRefresherState?.();
-        } catch (error) {
-            window.location.href = targetLinkUrl;
-        } finally {
-            this.isPageLoading = false;
-            this.ui.removeAlert('로딩 중...');
-        }
-    },
-
-    async checkUrlExists(url: string): Promise<boolean> {
-        try {
-            const response = await fetch(url, { method: 'HEAD' });
-            return response.status !== 404;
-        } catch (error) {
-            return false;
-        }
-    },
-
-    async navigatePrevPost(): Promise<void> { // Z 키
-        if (!this.posts || !this.ui) return;
-        const currentUrl = new URL(window.location.href);
-        const currentPostNo = parseInt(currentUrl.searchParams.get('no') || '0', 10);
-        if (!currentPostNo) { this.ui.showAlert("현재 글 번호를 찾을 수 없습니다."); return; }
-
-        const crtIcon = document.querySelector('td.gall_num .sp_img.crt_icon');
-        const { validPosts, currentIndex } = this.posts.getValidPosts();
-        const isPageBoundary = currentIndex === 0;
-        const shouldUseHeadFallback = !crtIcon || (isPageBoundary && !currentUrl.searchParams.has('s_keyword'));
-
-        if (shouldUseHeadFallback) {
-            for (let i = 1; i <= 5; i++) {
-                const targetUrl = new URL(currentUrl);
-                targetUrl.searchParams.set('no', (currentPostNo + i).toString());
-                if (await this.checkUrlExists(targetUrl.toString())) { window.location.href = targetUrl.toString(); return; }
-            }
-            this.ui.showAlert('근처에서 다음 글을 찾지 못했습니다.');
-            this.rescheduleMacroAttempt('Z');
-            return;
-        }
-
-        let row = crtIcon!.closest('tr')?.previousElementSibling;
-        while (row) {
-            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, null)) {
-                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
-                if (link?.href) { window.location.href = link.href; return; }
-            }
-            row = row.previousElementSibling;
-        }
-
-        const prevPageLink = this.findPaginationLink('prev');
-        if (prevPageLink?.href) {
-            const { doc, baseURI } = await this.fetchPage(prevPageLink.href);
-            const finalPostLink = this.getLastValidPostLink(doc, baseURI);
-            if (finalPostLink) { window.location.href = finalPostLink; return; }
-        }
-
-        this.ui.showAlert('첫 게시글입니다.');
-        this.rescheduleMacroAttempt('Z');
-    },
-
-    async navigateNextPost(): Promise<void> { // X 키
-        if (!this.posts || !this.ui) return;
-        const currentUrl = new URL(window.location.href);
-        const currentPostNo = parseInt(currentUrl.searchParams.get('no') || '0', 10);
-        if (!currentPostNo) { this.ui.showAlert("현재 글 번호를 찾을 수 없습니다."); return; }
-
-        const crtIcon = document.querySelector('td.gall_num .sp_img.crt_icon');
-        const { validPosts, currentIndex } = this.posts.getValidPosts();
-        const isPageBoundary = validPosts.length > 0 && currentIndex === validPosts.length - 1;
-        const shouldUseHeadFallback = !crtIcon || (isPageBoundary && !currentUrl.searchParams.has('s_keyword'));
-
-        if (shouldUseHeadFallback) {
-            for (let i = 1; i <= 5; i++) {
-                const targetUrl = new URL(currentUrl);
-                const targetNo = currentPostNo - i;
-                if (targetNo <= 0) break;
-                targetUrl.searchParams.set('no', targetNo.toString());
-                if (await this.checkUrlExists(targetUrl.toString())) { window.location.href = targetUrl.toString(); return; }
-            }
-            this.ui.showAlert('근처에서 이전 글을 찾지 못했습니다.');
-            this.rescheduleMacroAttempt('X');
-            return;
-        }
-
-        let row = crtIcon!.closest('tr')?.nextElementSibling;
-        while (row) {
-            if (this.posts.isValidPost(row.querySelector('td.gall_num') as HTMLElement, row.querySelector('td.gall_tit') as HTMLElement, null)) {
-                const link = row.querySelector<HTMLAnchorElement>('td.gall_tit a:first-child');
-                if (link?.href) { window.location.href = link.href; return; }
-            }
-            row = row.nextElementSibling;
-        }
-
-        const nextPageLink = this.findPaginationLink('next');
-        if (nextPageLink?.href) {
-            const { doc, baseURI } = await this.fetchPage(nextPageLink.href);
-            const firstPostLink = this.getFirstValidPostLink(doc, baseURI);
-            if (firstPostLink) { window.location.href = firstPostLink; return; }
-        }
-
-        this.ui.showAlert('마지막 게시글입니다.');
-        this.rescheduleMacroAttempt('X');
-    },
 
     rescheduleMacroAttempt(macroType: 'Z' | 'X'): void {
         const navigateFn = macroType === 'Z' ? this.navigatePrevPost : this.navigateNextPost;
-        const currentInterval = this.settingsStore!.macroInterval;
+        if (!this.settingsStore) return;
+        const currentInterval = this.settingsStore.macroInterval;
         const currentTimeout = this._macroTimeouts[macroType];
-        if (currentTimeout !== null) clearTimeout(currentTimeout); // [수정] null 체크 추가
-
+        if (currentTimeout !== null) clearTimeout(currentTimeout);
         this._macroTimeouts[macroType] = window.setTimeout(async () => {
             this._macroTimeouts[macroType] = null;
             const state = await this.getMacroStateFromBackground();

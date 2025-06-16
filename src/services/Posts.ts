@@ -32,7 +32,7 @@ interface ValidPostsResult {
 const Posts = {
     /**
      * 주어진 행(tr)이 유효한 게시글인지 판별합니다.
-     * 공지, 광고, 차단된 글 등을 필터링합니다.
+     * 공지, 광고, 차단된 글 등을 필터링하는 원본 로직을 그대로 유지합니다.
      * @param {HTMLElement | null} numCell - 번호가 표시되는 `<td>` (gall_num).
      * @param {HTMLElement | null} titleCell - 제목이 표시되는 `<td>` (gall_tit).
      * @param {HTMLElement | null} subjectCell - 말머리가 표시되는 `<td>` (gall_subject).
@@ -65,7 +65,7 @@ const Posts = {
         }
         
         // 5. 현재 보고 있는 글 아이콘('crt_icon')이 있는 경우, 유효한 글로 간주.
-        //    (위의 공지/고정글 필터는 통과해야 함)
+        //    (단, 위에서 공지/고정글은 이미 걸러졌어야 함)
         if (numCell.querySelector('.sp_img.crt_icon')) {
             return true;
         }
@@ -100,7 +100,6 @@ const Posts = {
             const link = titleCell?.querySelector<HTMLAnchorElement>('a:first-child');
             if (link) {
                 validPosts.push({ row, link });
-                // 현재 보고 있는 글('crt_icon')을 찾으면, validPosts 배열에서의 인덱스를 저장.
                 if (numCell?.querySelector('.sp_img.crt_icon')) {
                     currentIndex = validPosts.length - 1;
                 }
@@ -112,35 +111,52 @@ const Posts = {
 
     /**
      * 유효한 게시글 목록에 `[1]`, `[2]`... 와 같은 숫자 라벨을 시각적으로 추가합니다.
+     * 개념글 목록 등 여러 tbody가 있는 페이지를 처리하는 원본 로직을 그대로 유지합니다.
      */
     addNumberLabels(): void {
-        // 1. 기존 라벨 정보 초기화
-        document.querySelectorAll<HTMLTableCellElement>('td.gall_num.shortcut-labeled').forEach(cell => {
+        // 1. 기존에 추가했던 모든 라벨 정보를 깨끗하게 제거.
+        const previouslyLabeled = document.querySelectorAll<HTMLTableCellElement>('td.gall_num.shortcut-labeled');
+        previouslyLabeled.forEach(cell => {
             cell.classList.remove('shortcut-labeled');
-            // ::before 가상 요소의 content는 CSS로 제어되므로 JS에서 직접 제거할 필요 없음
+            delete cell.dataset.shortcutLabel;
         });
 
-        // 2. 라벨을 붙일 유효한 행들을 수집
+        // 2. 페이지의 모든 유효한 행을 순서대로 수집.
         const rowsToLabel: HTMLTableRowElement[] = [];
-        const rows = document.querySelectorAll<HTMLTableRowElement>('table.gall_list tbody tr');
+        const tbodies = document.querySelectorAll<HTMLTableSectionElement>('table.gall_list tbody');
 
-        rows.forEach(row => {
-            const numCell = row.querySelector<HTMLTableCellElement>('td.gall_num');
-            const titleCell = row.querySelector<HTMLTableCellElement>('td.gall_tit');
-            const subjectCell = row.querySelector<HTMLTableCellElement>('td.gall_subject');
-            
-            // [수정] isValidPost를 사용하여 유효한 게시글 행만 필터링
-            if (this.isValidPost(numCell, titleCell, subjectCell)) {
-                rowsToLabel.push(row);
-            }
+        tbodies.forEach((tbody, tbodyIndex) => {
+            const rowsInTbody = tbody.querySelectorAll<HTMLTableRowElement>('tr');
+            rowsInTbody.forEach(row => {
+                const numCell = row.querySelector<HTMLTableCellElement>('td.gall_num');
+                const titleCell = row.querySelector<HTMLTableCellElement>('td.gall_tit');
+                if (!numCell || !titleCell) return;
+
+                let isPostValidForLabeling = false;
+                // 첫 번째 tbody(일반글 목록)는 엄격한 기준(isValidPost)으로 검사
+                if (tbodyIndex === 0) {
+                    if (this.isValidPost(numCell, titleCell, row.querySelector<HTMLTableCellElement>('td.gall_subject'))) {
+                        isPostValidForLabeling = true;
+                    }
+                } else {
+                    // 두 번째 이후의 tbody(개념글 등)는 광고와 차단글만 제외하는 느슨한 기준으로 검사
+                    const numText = numCell.textContent?.trim() ?? '';
+                    if (numText !== 'AD' && !row.classList.contains('block-disable')) {
+                        isPostValidForLabeling = true;
+                    }
+                }
+                
+                if (isPostValidForLabeling) {
+                    rowsToLabel.push(row);
+                }
+            });
         });
 
-        // 3. 수집된 행에 순차적으로 라벨링
+        // 3. 수집된 모든 행에 대해 1번부터 순차적으로 라벨링.
         rowsToLabel.forEach((row, index) => {
             const numCell = row.querySelector<HTMLTableCellElement>('td.gall_num');
             if (numCell) {
                 numCell.classList.add('shortcut-labeled');
-                // CSS에서 content: attr(data-shortcut-label) 로 사용될 데이터 설정
                 numCell.dataset.shortcutLabel = `[${index + 1}]`;
             }
         });
@@ -153,10 +169,10 @@ const Posts = {
      */
     navigate(number: string): boolean {
         const { validPosts } = this.getValidPosts();
-        const index = parseInt(number, 10) - 1; // 0-based index로 변환
+        const index = parseInt(number, 10) - 1;
 
         if (index >= 0 && index < validPosts.length) {
-            validPosts[index].link.click(); // 해당 게시글 링크 클릭
+            validPosts[index].link.click();
             return true;
         }
         return false;
@@ -169,20 +185,17 @@ const Posts = {
         const today = new Date();
         const todayDateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-        // 아직 포맷되지 않은 날짜 셀만 선택
         const dateCells = document.querySelectorAll<HTMLTableCellElement>('td.gall_date:not(.date-formatted)');
 
         dateCells.forEach(dateCell => {
-            // title 속성에 전체 타임스탬프가 있는지 확인
             if (dateCell.title) {
-                const fullTimestamp = dateCell.title; // 예: "2025-04-08 17:03:17"
+                const fullTimestamp = dateCell.title;
                 const match = fullTimestamp.match(/(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):\d{2}/);
 
                 if (match) {
                     const [, postYear, postMonth, postDay, postHour, postMinute] = match;
                     const postDateString = `${postYear}-${postMonth}-${postDay}`;
 
-                    // 오늘 작성된 글이면 'HH:mm', 아니면 'MM.DD HH:mm' 형식으로 포맷
                     const formattedDate = (postDateString === todayDateString)
                         ? `${postHour}:${postMinute}`
                         : `${postMonth}.${postDay} ${postHour}:${postMinute}`;
@@ -192,13 +205,13 @@ const Posts = {
                     }
                 }
             }
-            // 처리 완료 클래스를 추가하여 중복 작업을 방지
             dateCell.classList.add('date-formatted');
         });
     },
 
     /**
      * 게시글 목록 테이블의 `<colgroup>` 너비를 조정하여 레이아웃을 최적화합니다.
+     * 갤러리마다 다른 컬럼 개수(6, 7, 8개)에 대응하는 원본 로직을 그대로 유지합니다.
      */
     adjustColgroupWidths(): void {
         const colgroup = document.querySelector<HTMLTableColElement>('table.gall_list colgroup');
@@ -207,25 +220,18 @@ const Posts = {
         const cols = colgroup.querySelectorAll('col');
         let targetWidths: (string | null)[] | null = null;
 
-        // col 개수에 따라 다른 너비 배열 설정
-        switch (cols.length) {
-            case 8: // 체크박스, 말머리, 아이콘, 제목, 글쓴이, 작성일, 조회, 추천
-                targetWidths = ['25px', '9%', '51px', null, '15%', '8%', '6%', '6%'];
-                break;
-            case 7: // 번호, 말머리, 제목, 글쓴이, 작성일, 조회, 추천
-                targetWidths = ['9%', '51px', null, '15%', '8%', '6%', '6%'];
-                break;
-            case 6: // 번호, 제목, 글쓴이, 작성일, 조회, 추천
-                targetWidths = ['9%', null, '15%', '8%', '6%', '6%'];
-                break;
-            default:
-                console.warn("Colgroup 내 col 개수가 6, 7 또는 8이 아닙니다:", cols.length);
-                return;
+        if (cols.length === 8) {
+            targetWidths = ['25px', '9%', '51px', null, '15%', '8%', '6%', '6%'];
+        } else if (cols.length === 7) {
+            targetWidths = ['9%', '51px', null, '15%', '8%', '6%', '6%'];
+        } else if (cols.length === 6) {
+            targetWidths = ['9%', null, '15%', '8%', '6%', '6%'];
+        } else {
+            return;
         }
 
-        // 선택된 너비 배열을 사용하여 스타일 적용
         cols.forEach((col, index) => {
-            if (index >= targetWidths!.length) return; // 타입 가드 후 non-null 단언(!)
+            if (index >= targetWidths!.length) return;
             const targetWidth = targetWidths![index];
 
             if (targetWidth !== null) {

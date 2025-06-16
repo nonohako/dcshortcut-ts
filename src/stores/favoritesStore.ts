@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import Storage from '@/services/Storage';
-import { ACTIVE_FAVORITES_PROFILE_KEY } from '@/services/Global';
-// [수정] 중앙 타입 정의 파일을 사용하거나, 여기서 타입을 export 해야 합니다.
-// 여기서는 export를 추가하는 방식으로 해결합니다.
+// [수정] FAVORITE_GALLERIES_KEY를 import 합니다.
+import { ACTIVE_FAVORITES_PROFILE_KEY, FAVORITE_GALLERIES_KEY } from '@/services/Global';
 import type { FavoriteGalleries, FavoriteGalleryInfo, FavoriteProfiles } from '@/types';
 
 export type { FavoriteGalleries, FavoriteGalleryInfo, FavoriteProfiles };
@@ -67,46 +66,45 @@ export const useFavoritesStore = defineStore('favorites', () => {
     async function loadProfiles(): Promise<void> {
         console.log('[Pinia Fav Load] 프로필 로드를 시도합니다...');
         try {
-            // Storage.getFavorites()는 이제 프로필 구조 전체를 가져올 수 있음
-            const loadedData = await Storage.getFavorites() as unknown as FavoriteProfiles | FavoriteGalleries;
+            // [핵심 수정] 올바른 스토리지 키(FAVORITE_GALLERIES_KEY)를 사용하여 전체 프로필 데이터를 가져옵니다.
+            const loadedData = await Storage.getData(FAVORITE_GALLERIES_KEY, {}) as unknown;
+            // 활성 프로필 이름은 별도의 키로 가져옵니다.
             const loadedActiveProfile = await Storage.getData(ACTIVE_FAVORITES_PROFILE_KEY, '기본');
 
-            if (!loadedData || Object.keys(loadedData).length === 0) {
-                // 저장된 데이터가 없으면 '기본' 프로필을 가진 초기 상태로 설정
+            if (!loadedData || typeof loadedData !== 'object' || Object.keys(loadedData).length === 0) {
                 profiles.value = { '기본': {} };
-            } else if ('name' in Object.values(loadedData)[0]) {
-                // <<< 데이터 마이그레이션 로직 >>>
-                // 데이터 구조를 보고 구 버전인지 판별 (값 객체에 'name' 속성이 바로 있는 경우)
-                console.warn('[Pinia Fav Load] 구 버전 데이터 형식을 감지하여 마이그레이션을 진행합니다...');
-                profiles.value = { '기본': loadedData as FavoriteGalleries };
-                await saveProfiles(); // 새 구조로 즉시 저장
             } else {
-                // 새로운 프로필 구조의 데이터
-                profiles.value = loadedData as FavoriteProfiles;
+                const keys = Object.keys(loadedData);
+                const isOldFormat = keys.length > 0 && keys.every(key => /^[0-9]$/.test(key));
+
+                if (isOldFormat) {
+                    console.warn('[Pinia Fav Load] 구 버전 즐겨찾기 데이터를 발견했습니다. 새 프로필 형식으로 마이그레이션합니다...');
+                    profiles.value = { '기본': loadedData as FavoriteGalleries };
+                    await saveProfiles();
+                    console.log('[Pinia Fav Load] 마이그레이션 완료 및 저장 성공.');
+                } else {
+                    profiles.value = loadedData as FavoriteProfiles;
+                }
             }
 
-            // 활성 프로필 이름이 유효한지 확인하고 설정
             if (profiles.value && profiles.value.hasOwnProperty(loadedActiveProfile)) {
                 activeProfileName.value = loadedActiveProfile;
             } else {
                 activeProfileName.value = '기본';
+                await Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, '기본');
             }
 
             console.log(`[Pinia Fav Load] 프로필 로딩 성공. 활성 프로필: ${activeProfileName.value}`);
         } catch (error) {
             console.error('[Pinia Fav Load] 프로필 로딩 중 오류 발생:', error);
-            profiles.value = { '기본': {} }; // 오류 발생 시 안전한 기본값으로 설정
+            profiles.value = { '기본': {} };
         }
     }
 
-    /**
-     * 현재 profiles 상태 전체를 Storage에 저장합니다.
-     */
     async function saveProfiles(): Promise<void> {
         if (profiles.value === null) {
-            throw new Error("Cannot save null profiles.");
+            throw new Error("null 상태의 프로필은 저장할 수 없습니다.");
         }
-        // [수정] Storage.saveFavorites는 이제 FavoriteProfiles 타입을 받으므로 에러 없음
         await Storage.saveFavorites(profiles.value);
     }
 
@@ -190,10 +188,18 @@ export const useFavoritesStore = defineStore('favorites', () => {
         if (typeof newProfilesData !== 'object' || newProfilesData === null) {
             throw new Error("프로필 설정에 제공된 데이터가 유효하지 않습니다.");
         }
+        
+        // 1. 스토어의 내부 상태(ref)를 새로운 데이터로 교체합니다.
         profiles.value = { ...newProfilesData };
-        // 새 데이터의 첫 번째 프로필을 활성 프로필로 설정 (없으면 '기본')
+        
+        // 2. 새 데이터의 첫 번째 프로필을 활성 프로필로 설정합니다.
         const firstProfile = Object.keys(newProfilesData)[0] || '기본';
-        await switchProfile(firstProfile); // switchProfile이 저장까지 처리
+        // switchProfile은 활성 프로필 이름만 저장하므로 그대로 둡니다.
+        await switchProfile(firstProfile); 
+        
+        // 3. [핵심 수정] 변경된 전체 프로필 데이터를 chrome.storage에 영구적으로 저장합니다.
+        await saveProfiles();
+        console.log('[Pinia Fav ClearSet] 새 프로필 데이터를 스토리지에 저장 완료.');
     }
 
 

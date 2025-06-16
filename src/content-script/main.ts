@@ -1,6 +1,5 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-// [수정] 콘텐츠 스크립트의 메인 CSS 파일 import 경로를 수정합니다.
 import './style.css';
 
 // Vue App and Components
@@ -36,7 +35,8 @@ type MessageAction =
   | 'stopMacro'
   | 'leaderUpdate'
   | 'getMyTabId'
-  | 'getLeaderTabId';
+  | 'getLeaderTabId'
+  | 'claimLeadership';
 
 interface BaseMessage {
   action: MessageAction;
@@ -65,12 +65,10 @@ const pinia = createPinia();
 const app = createApp(App);
 app.use(pinia);
 
-// Pinia 스토어 인스턴스 생성
 const favoritesStore = useFavoritesStore();
 const settingsStore = useSettingsStore();
 const uiStore = useUiStore();
 
-// Events 모듈에 모든 의존성 주입
 Events.setup(Storage, Posts, UI, Gallery, favoritesStore, settingsStore, uiStore);
 
 // =================================================================
@@ -94,12 +92,10 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
         try {
           const currentTabId = await Events.getCurrentTabId();
           if (currentTabId !== expectedTabId) {
-            console.warn(`[startMacro] 탭 ID 불일치. 예상: ${expectedTabId}, 현재: ${currentTabId}. 무시.`);
             return sendResponse({ success: false, message: 'Mismatched Tab ID' });
           }
           const isUiEnabled = macroType === 'Z' ? settingsStore.macroZEnabled : settingsStore.macroXEnabled;
           if (!isUiEnabled) {
-            console.log(`[startMacro] ${macroType} 매크로가 UI 설정에서 비활성화됨.`);
             return sendResponse({ success: false, message: 'UI setting is disabled.' });
           }
           await (macroType === 'Z' ? Events.navigatePrevPost() : Events.navigateNextPost());
@@ -108,7 +104,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
           if (error instanceof Error) sendResponse({ success: false, message: error.message });
         }
       })();
-      return true; // 비동기 응답
+      return true;
 
     case 'stopMacro':
         const { type, reason } = message as StopMacroMessage;
@@ -118,16 +114,19 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
     case 'leaderUpdate':
         const { leaderTabId } = message as LeaderUpdateMessage;
-        console.log(`[LeaderUpdate] 새 리더: ${leaderTabId}. 내 ID: ${myTabId}.`);
         handleAutoRefresherState();
         sendResponse({ success: true });
+        break;
+    
+    case 'claimLeadership':
+        // 이 메시지는 background.ts에서만 처리하므로 content-script에서는 무시
         break;
 
     default:
       sendResponse({ success: false, message: 'Unknown action' });
       break;
   }
-  return false; // 동기 응답 (비동기 처리 시에는 true 반환)
+  return false;
 });
 
 // =================================================================
@@ -145,11 +144,20 @@ async function handleAutoRefresherState(): Promise<void> {
       AutoRefresher.stop();
       return;
     }
-    const leaderTabId = response.leaderTabId;
+    let leaderTabId = response.leaderTabId;
+
+    if (leaderTabId === null) {
+        const claimResponse = await chrome.runtime.sendMessage({ action: 'claimLeadership' });
+        if (claimResponse?.success && claimResponse.leader) {
+            leaderTabId = myTabId;
+        }
+    }
+
     const isEnabledInSettings = settingsStore.autoRefreshEnabled;
     const isRefreshable = Gallery.isRefreshablePage();
+    const amITheLeader = myTabId === leaderTabId;
 
-    if (myTabId === leaderTabId && isRefreshable && isEnabledInSettings) {
+    if (amITheLeader && isRefreshable && isEnabledInSettings) {
       AutoRefresher.start();
     } else {
       AutoRefresher.stop();
@@ -162,30 +170,35 @@ async function handleAutoRefresherState(): Promise<void> {
 window.handleAutoRefresherState = handleAutoRefresherState;
 window.AutoRefresher = AutoRefresher;
 
-
 // =================================================================
 // Observers and Initialization (DOM 옵저버 및 초기화)
 // =================================================================
 
+/**
+ * DOM 변경을 감지하여 UI를 업데이트하는 MutationObserver를 설정합니다.
+ * (원본 로직 복원)
+ */
 function setupObservers(): void {
-  const listObserver = new MutationObserver((mutations) => {
-    if (mutations.some(m => m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
+  const listObserver = new MutationObserver(() => {
+    setTimeout(() => {
       Posts.addNumberLabels();
       Posts.formatDates();
-    }
+    }, 150);
   });
 
   const bodyObserver = new MutationObserver(() => {
+    Posts.adjustColgroupWidths();
     const currentListTbody = document.querySelector('table.gall_list tbody');
     if (currentListTbody) {
-      listObserver.disconnect();
-      listObserver.observe(currentListTbody, { childList: true });
-      Posts.adjustColgroupWidths();
       Posts.addNumberLabels();
       Posts.formatDates();
-      addPrefetchHints();
+      // listObserver가 이미 연결되어 있고, tbody가 변경되지 않았다면 다시 연결하지 않음
+      // 이 부분은 복잡성을 줄이기 위해 단순화: body 변경 시 항상 재연결 시도
+      listObserver.disconnect();
+      listObserver.observe(currentListTbody, { childList: true });
     }
     setupTabFocus();
+    addPrefetchHints();
   });
 
   const initialListTbody = document.querySelector('table.gall_list tbody');
@@ -195,6 +208,9 @@ function setupObservers(): void {
   bodyObserver.observe(document.body, { childList: true, subtree: true });
 }
 
+/**
+ * 콘텐츠 스크립트의 메인 초기화 함수 (원본 로직 순서 보존)
+ */
 async function initialize(): Promise<void> {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getMyTabId' });
@@ -211,15 +227,15 @@ async function initialize(): Promise<void> {
   console.log(`🔧 탭 ${myTabId}에 대한 초기 설정 실행 중...`);
 
   try {
-    // 1. 설정과 즐겨찾기를 먼저 불러옵니다.
+    // 1. 설정과 즐겨찾기를 먼저 비동기적으로 불러옵니다.
     await settingsStore.loadSettings();
     await favoritesStore.loadProfiles();
     console.log('[Main] 설정 및 즐겨찾기 로드 완료.');
 
-    // 2. 설정이 로드된 후, UI 관련 모듈들을 초기화합니다.
+    // 2. 설정이 로드된 후, 다른 모듈들을 초기화합니다.
     AutoRefresher.init(settingsStore, Posts, Events);
 
-    // 3. 페이지의 초기 UI를 렌더링하고 기능을 적용합니다.
+    // 3. 페이지의 초기 UI 렌더링 및 기능 적용 (DOM 조작)
     Posts.adjustColgroupWidths();
     Posts.addNumberLabels();
     Posts.formatDates();
@@ -229,10 +245,10 @@ async function initialize(): Promise<void> {
     handlePageLoadScroll();
     SearchPageEnhancer.init();
     
-    // 4. DOM 변경 감지 옵저버를 설정합니다.
+    // 4. DOM 변경 감지 옵저버 설정
     setupObservers();
 
-    // 5. 페이지 로드 시 매크로 실행 여부를 확인합니다.
+    // 5. 페이지 로드 시 매크로 실행 여부 확인
     await Events.triggerMacroNavigation();
 
     // 6. 설정 변경 및 페이지 상태에 따른 리스너들을 등록합니다.
@@ -256,7 +272,7 @@ async function initialize(): Promise<void> {
     });
 
     // 7. 모든 설정이 끝난 후, 자동 새로고침 상태를 최종적으로 확인합니다.
-    setTimeout(handleAutoRefresherState, 100);
+    await handleAutoRefresherState();
 
     console.log('✅ DCInside ShortCut 준비 완료!');
 
