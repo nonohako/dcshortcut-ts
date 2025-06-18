@@ -265,11 +265,25 @@ const AutoRefresher = {
     },
 
     /**
-     * 새로운 게시글 행들을 테이블 상단에 삽입하고, 오래된 행들을 제거합니다.
+     * [수정] 새로운 게시글 행들을 테이블 상단에 삽입하고, 오래된 행들을 제거합니다.
+     * 다른 확장 프로그램과의 충돌을 방지하기 위해 DOM 구조를 보정하는 로직을 포함합니다.
+     * @param {HTMLTableSectionElement} targetTbody - 게시글을 삽입/제거할 `<tbody>` 요소.
+     * @param {HTMLTableRowElement[]} newRowsFromFetch - 새로 삽입할, fetch로 가져온 원본 `<tr>` 요소들의 배열.
      */
-    insertAndTrimPosts(targetTbody: HTMLTableSectionElement, newRows: HTMLTableRowElement[]): void {
+    insertAndTrimPosts(targetTbody: HTMLTableSectionElement, newRowsFromFetch: HTMLTableRowElement[]): void {
         if (!this.postsModule) return;
 
+        // 1. 현재 페이지에 있는 기존 행의 열(column) 개수를 파악합니다.
+        const existingRowSample = targetTbody.querySelector<HTMLTableRowElement>('tr.ub-content');
+        const existingColumnCount = existingRowSample ? existingRowSample.cells.length : 0;
+
+        // 기준이 되는 행이 없으면 작업을 중단합니다 (안전 장치).
+        if (existingColumnCount === 0) {
+            console.warn('[AutoRefresher] 기존 행의 구조를 파악할 수 없어 새 글을 삽입하지 않습니다.');
+            return;
+        }
+
+        // 새 글이 삽입될 위치를 찾습니다 (가장 첫 번째 유효 게시글 앞).
         let firstValidPostRow: Element | null = null;
         for (const row of Array.from(targetTbody.children)) {
             if (this.postsModule.isValidPost(row.querySelector('td.gall_num'), row.querySelector('td.gall_tit'), row.querySelector('td.gall_subject'))) {
@@ -278,11 +292,32 @@ const AutoRefresher = {
             }
         }
 
-        newRows.reverse().forEach(row => {
-            row.classList.add('new-post-highlight');
-            targetTbody.insertBefore(row, firstValidPostRow);
+        // 2. 새로 추가할 각 행을 순회하며 구조를 보정합니다.
+        newRowsFromFetch.reverse().forEach(newRowSource => {
+            // 원본을 직접 수정하지 않기 위해 행을 복제합니다.
+            const newRow = newRowSource.cloneNode(true) as HTMLTableRowElement;
+            const newColumnCount = newRow.cells.length;
+
+            // 3. [핵심 로직] 새로 가져온 행의 열 개수가 현재 페이지의 열 개수보다 적으면,
+            //    부족한 만큼 앞쪽에 빈 <td>를 추가하여 구조를 맞춥니다.
+            if (newColumnCount < existingColumnCount) {
+                const columnsToAdd = existingColumnCount - newColumnCount;
+                console.log(`[AutoRefresher] 구조 불일치 감지. ${columnsToAdd}개의 열을 추가하여 보정합니다.`);
+                for (let i = 0; i < columnsToAdd; i++) {
+                    const placeholderTd = document.createElement('td');
+                    // 다른 확장 프로그램(DC Refresher)이 추가하는 체크박스 열의 클래스를 지정해줍니다.
+                    // 이렇게 하면 너비 등 CSS 스타일이 일관되게 적용됩니다.
+                    placeholderTd.className = 'gall_chk'; 
+                    newRow.insertBefore(placeholderTd, newRow.firstChild);
+                }
+            }
+
+            // 4. 구조가 보정된 행을 DOM에 삽입합니다.
+            newRow.classList.add('new-post-highlight');
+            targetTbody.insertBefore(newRow, firstValidPostRow);
         });
 
+        // --- 이하 하이라이트 효과 및 오래된 글 제거 로직은 동일 ---
         if (document.hasFocus()) {
             const insertedRows = targetTbody.querySelectorAll<HTMLTableRowElement>('.new-post-highlight');
             insertedRows.forEach(row => {
