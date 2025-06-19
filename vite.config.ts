@@ -31,10 +31,11 @@ export default defineConfig({
     },
     emptyOutDir: true,
     // --- 콘솔 로그 제거 옵션 추가 ---
+    minify: 'terser', // 최소화 도구를 'terser'로 강제 지정
     terserOptions: {
       compress: {
-        drop_console: true, // 모든 console.* 구문 제거
-        drop_debugger: true, // debugger 구문 제거
+        drop_console: true,
+        drop_debugger: true,
       },
     },
     // --- 콘솔 로그 제거 옵션 추가 끝 ---
