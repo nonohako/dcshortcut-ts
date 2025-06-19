@@ -17,6 +17,8 @@ import Gallery from '@/services/Gallery';
 import AutoRefresher from '@/services/AutoRefresher';
 import SearchPageEnhancer from '@/services/SearchPageEnhancer';
 import {
+  FAVORITE_GALLERIES_KEY,
+  ACTIVE_FAVORITES_PROFILE_KEY,
   addPrefetchHints,
   handlePageLoadScroll,
   setupTabFocus,
@@ -67,6 +69,7 @@ let knownLeaderId: number | null = null;
 // =================================================================
 // Vue & Pinia Initialization (Vue 및 Pinia 초기화)
 // =================================================================
+
 const pinia = createPinia();
 const app = createApp(App);
 app.use(pinia);
@@ -76,8 +79,100 @@ const uiStore = useUiStore();
 Events.setup(Storage, Posts, UI, Gallery, favoritesStore, settingsStore, uiStore);
 
 // =================================================================
+// [추가] Storage Listener for Real-time Sync (실시간 동기화를 위한 스토리지 리스너)
+// =================================================================
+
+/**
+ * chrome.storage의 변경 사항을 감지하여 다른 탭의 설정을 실시간으로 동기화합니다.
+ */
+function setupStorageListener(): void {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    // 'local' 스토리지 영역의 변경만 감지합니다.
+    if (areaName !== 'local') return;
+
+    console.log('[Storage Listener] 설정 변경 감지:', changes);
+
+    // 변경된 각 키에 대해 처리
+    for (const key in changes) {
+      if (Object.prototype.hasOwnProperty.call(changes, key)) {
+        const { newValue } = changes[key];
+
+        // 1. 즐겨찾기 데이터 동기화
+        if (key === FAVORITE_GALLERIES_KEY) {
+          console.log('[Sync] 즐겨찾기 목록 변경됨. 다시 로드합니다.');
+          // 복잡한 객체는 전체를 다시 로드하는 것이 가장 안전합니다.
+          favoritesStore.loadProfiles();
+          continue; // 다음 변경 사항으로 넘어감
+        }
+        if (key === ACTIVE_FAVORITES_PROFILE_KEY) {
+            console.log(`[Sync] 활성 프로필 변경됨: ${newValue}`);
+            favoritesStore.activeProfileName = newValue;
+            continue;
+        }
+
+        // 2. 설정(settingsStore) 동기화
+        // 각 키에 맞춰 settingsStore의 상태를 직접 업데이트합니다.
+        switch (key) {
+          case 'pageNavigationMode':
+            settingsStore.pageNavigationMode = newValue;
+            break;
+          case 'altNumberEnabled':
+            settingsStore.altNumberEnabled = newValue;
+            break;
+          case 'macroZEnabled':
+            settingsStore.macroZEnabled = newValue;
+            break;
+          case 'macroXEnabled':
+            settingsStore.macroXEnabled = newValue;
+            break;
+          case 'shortcutDRefreshCommentEnabled':
+            settingsStore.shortcutDRefreshCommentEnabled = newValue;
+            break;
+          case 'macroInterval':
+            settingsStore.macroInterval = Number(newValue);
+            break;
+          case 'favoritesPreviewEnabled':
+            settingsStore.favoritesPreviewEnabled = newValue;
+            break;
+          case 'favoritesPreviewOpacity':
+            settingsStore.favoritesPreviewOpacity = Number(newValue);
+            break;
+          case 'autoRefreshEnabled':
+            settingsStore.autoRefreshEnabled = newValue;
+            break;
+          case 'autoRefreshInterval':
+            settingsStore.autoRefreshInterval = Number(newValue);
+            break;
+          case 'shortcutSubmitCommentKeyEnabled':
+            settingsStore.shortcutSubmitCommentKeyEnabled = newValue;
+            break;
+          case 'shortcutSubmitImagePostKeyEnabled':
+            settingsStore.shortcutSubmitImagePostKeyEnabled = newValue;
+            break;
+          case 'shortcutToggleModalKeyEnabled':
+            settingsStore.shortcutToggleModalKeyEnabled = newValue;
+            break;
+          case 'pauseOnInactiveEnabled':
+            settingsStore.pauseOnInactiveEnabled = newValue;
+            break;
+          default:
+            // 단축키 키/활성화 여부 같이 패턴이 있는 경우 처리
+            if (key.startsWith('shortcut') && key.endsWith('Key')) {
+              settingsStore.shortcutKeys[key] = newValue;
+            } else if (key.startsWith('shortcut') && key.endsWith('Enabled')) {
+              settingsStore.shortcutEnabled[key] = newValue;
+            }
+            break;
+        }
+      }
+    }
+  });
+}
+
+// =================================================================
 // Chrome Runtime Message Listener (메시지 리스너)
 // =================================================================
+
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
   switch (message.action) {
     case 'openFavoritesModal':
@@ -214,6 +309,8 @@ async function initialize(): Promise<void> {
 
     await Promise.all([settingsStore.loadSettings(), favoritesStore.loadProfiles()]);
     console.log('[Main] 설정 및 즐겨찾기 로드 완료.');
+
+    setupStorageListener();
 
     AutoRefresher.init(settingsStore, Posts, Events);
 

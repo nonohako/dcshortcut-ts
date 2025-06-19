@@ -1,4 +1,4 @@
-// vite.config.js
+// vite.config.ts
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
@@ -16,7 +16,7 @@ export default defineConfig({
   ],
   build: {
     outDir: 'dist',
-    sourcemap: false, // 프로덕션 빌드에서는 sourcemap을 false로 하는 것이 일반적입니다.
+    sourcemap: false,
     rollupOptions: {
       input: {
         popup: path.resolve(__dirname, 'popup.html'),
@@ -30,16 +30,15 @@ export default defineConfig({
       },
     },
     emptyOutDir: true,
-    // --- 콘솔 로그 제거 옵션 추가 ---
-    minify: 'terser', // 최소화 도구를 'terser'로 강제 지정
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-      },
-    },
-    // --- 콘솔 로그 제거 옵션 추가 끝 ---
+    minify: 'esbuild',
   },
+
+  // [수정] esbuild 설정을 defineConfig의 최상위 레벨로 이동
+  esbuild: {
+    pure: ['console.log', 'console.error', 'console.warn', 'console.debug', 'console.trace'],
+    drop: ['debugger'],
+  },
+
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
