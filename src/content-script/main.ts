@@ -36,7 +36,7 @@ type MessageAction =
   | 'leaderUpdate'
   | 'getMyTabId'
   | 'getLeaderTabId'
-  | 'claimLeadership';
+  | 'contentScriptLoaded';
 
 interface BaseMessage {
   action: MessageAction;
@@ -57,6 +57,12 @@ interface LeaderUpdateMessage extends BaseMessage {
 }
 type RuntimeMessage = BaseMessage | StartMacroMessage | StopMacroMessage | LeaderUpdateMessage;
 
+// =================================================================
+// Global State
+// =================================================================
+
+let myTabId: number | null = null;
+let knownLeaderId: number | null = null;
 
 // =================================================================
 // Vue & Pinia Initialization (Vue 및 Pinia 초기화)
@@ -64,11 +70,9 @@ type RuntimeMessage = BaseMessage | StartMacroMessage | StopMacroMessage | Leade
 const pinia = createPinia();
 const app = createApp(App);
 app.use(pinia);
-
 const favoritesStore = useFavoritesStore();
 const settingsStore = useSettingsStore();
 const uiStore = useUiStore();
-
 Events.setup(Storage, Posts, UI, Gallery, favoritesStore, settingsStore, uiStore);
 
 // =================================================================
@@ -94,7 +98,8 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
           if (currentTabId !== expectedTabId) {
             return sendResponse({ success: false, message: 'Mismatched Tab ID' });
           }
-          const isUiEnabled = macroType === 'Z' ? settingsStore.macroZEnabled : settingsStore.macroXEnabled;
+          const isUiEnabled =
+            macroType === 'Z' ? settingsStore.macroZEnabled : settingsStore.macroXEnabled;
           if (!isUiEnabled) {
             return sendResponse({ success: false, message: 'UI setting is disabled.' });
           }
@@ -107,20 +112,18 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       return true;
 
     case 'stopMacro':
-        const { type, reason } = message as StopMacroMessage;
-        Events.handleStopMacroCommand(type, reason);
-        sendResponse({ success: true });
-        break;
+      const { type, reason } = message as StopMacroMessage;
+      Events.handleStopMacroCommand(type, reason);
+      sendResponse({ success: true });
+      break;
 
     case 'leaderUpdate':
-        const { leaderTabId } = message as LeaderUpdateMessage;
-        handleAutoRefresherState();
-        sendResponse({ success: true });
-        break;
-    
-    case 'claimLeadership':
-        // 이 메시지는 background.ts에서만 처리하므로 content-script에서는 무시
-        break;
+      const { leaderTabId } = message as LeaderUpdateMessage;
+      console.log(`[LeaderUpdate] 새 리더 정보 수신: ${leaderTabId}. (내 탭 ID: ${myTabId})`);
+      knownLeaderId = leaderTabId;
+      handleAutoRefresherState();
+      sendResponse({ success: true });
+      break;
 
     default:
       sendResponse({ success: false, message: 'Unknown action' });
@@ -133,36 +136,26 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 // Auto-Refresher Logic (자동 새로고침 로직)
 // =================================================================
 
-let myTabId: number | null = null;
-
-async function handleAutoRefresherState(): Promise<void> {
+/**
+ * [핵심] 자동 새로고침의 시작/중지를 결정하는 함수.
+ * 이제 오직 백그라운드가 알려주는 리더 정보에만 의존합니다.
+ */
+function handleAutoRefresherState(): void {
   if (myTabId === null) return;
 
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getLeaderTabId' });
-    if (!response?.success) {
-      AutoRefresher.stop();
-      return;
-    }
-    let leaderTabId = response.leaderTabId;
+  const amITheLeader = myTabId === knownLeaderId;
+  const isEnabledInSettings = settingsStore.autoRefreshEnabled;
+  const isRefreshable = Gallery.isRefreshablePage();
 
-    if (leaderTabId === null) {
-        const claimResponse = await chrome.runtime.sendMessage({ action: 'claimLeadership' });
-        if (claimResponse?.success && claimResponse.leader) {
-            leaderTabId = myTabId;
-        }
-    }
+  const shouldStart = amITheLeader && isEnabledInSettings && isRefreshable;
 
-    const isEnabledInSettings = settingsStore.autoRefreshEnabled;
-    const isRefreshable = Gallery.isRefreshablePage();
-    const amITheLeader = myTabId === leaderTabId;
+  console.log(
+    `[AutoRefresher] 상태 확인: 리더? ${amITheLeader}, 설정 활성화? ${isEnabledInSettings}, 새로고침 가능? ${isRefreshable} -> 최종 결정: ${shouldStart ? '시작' : '중지'}`
+  );
 
-    if (amITheLeader && isRefreshable && isEnabledInSettings) {
-      AutoRefresher.start();
-    } else {
-      AutoRefresher.stop();
-    }
-  } catch (error) {
+  if (shouldStart) {
+    AutoRefresher.start();
+  } else {
     AutoRefresher.stop();
   }
 }
@@ -174,31 +167,25 @@ window.AutoRefresher = AutoRefresher;
 // Observers and Initialization (DOM 옵저버 및 초기화)
 // =================================================================
 
-/**
- * DOM 변경을 감지하여 UI를 업데이트하는 MutationObserver를 설정합니다.
- * (원본 로직 복원)
- */
 function setupObservers(): void {
-  const listObserver = new MutationObserver(() => {
-    setTimeout(() => {
+  const listObserver = new MutationObserver((mutations) => {
+    if (mutations.some((m) => m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
       Posts.addNumberLabels();
       Posts.formatDates();
-    }, 150);
+    }
   });
 
   const bodyObserver = new MutationObserver(() => {
-    Posts.adjustColgroupWidths();
     const currentListTbody = document.querySelector('table.gall_list tbody');
     if (currentListTbody) {
-      Posts.addNumberLabels();
-      Posts.formatDates();
-      // listObserver가 이미 연결되어 있고, tbody가 변경되지 않았다면 다시 연결하지 않음
-      // 이 부분은 복잡성을 줄이기 위해 단순화: body 변경 시 항상 재연결 시도
       listObserver.disconnect();
       listObserver.observe(currentListTbody, { childList: true });
+      Posts.adjustColgroupWidths();
+      Posts.addNumberLabels();
+      Posts.formatDates();
+      addPrefetchHints();
     }
     setupTabFocus();
-    addPrefetchHints();
   });
 
   const initialListTbody = document.querySelector('table.gall_list tbody');
@@ -208,9 +195,6 @@ function setupObservers(): void {
   bodyObserver.observe(document.body, { childList: true, subtree: true });
 }
 
-/**
- * 콘텐츠 스크립트의 메인 초기화 함수 (원본 로직 순서 보존)
- */
 async function initialize(): Promise<void> {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getMyTabId' });
@@ -219,23 +203,20 @@ async function initialize(): Promise<void> {
     } else {
       throw new Error(response.error || 'Failed to get Tab ID');
     }
-  } catch (error) {
-    console.error("치명적 오류: 자신의 탭 ID를 가져올 수 없습니다.", error);
-    return;
-  }
 
-  console.log(`🔧 탭 ${myTabId}에 대한 초기 설정 실행 중...`);
+    console.log(`🔧 탭 ${myTabId}에 대한 초기 설정 실행 중...`);
 
-  try {
-    // 1. 설정과 즐겨찾기를 먼저 비동기적으로 불러옵니다.
-    await settingsStore.loadSettings();
-    await favoritesStore.loadProfiles();
+    const leaderResponse = await chrome.runtime.sendMessage({ action: 'getLeaderTabId' });
+    if (leaderResponse?.success) {
+      knownLeaderId = leaderResponse.leaderTabId;
+      console.log(`[Init] 현재 리더는 탭 ${knownLeaderId} 입니다.`);
+    }
+
+    await Promise.all([settingsStore.loadSettings(), favoritesStore.loadProfiles()]);
     console.log('[Main] 설정 및 즐겨찾기 로드 완료.');
 
-    // 2. 설정이 로드된 후, 다른 모듈들을 초기화합니다.
     AutoRefresher.init(settingsStore, Posts, Events);
 
-    // 3. 페이지의 초기 UI 렌더링 및 기능 적용 (DOM 조작)
     Posts.adjustColgroupWidths();
     Posts.addNumberLabels();
     Posts.formatDates();
@@ -244,38 +225,35 @@ async function initialize(): Promise<void> {
     addPrefetchHints();
     handlePageLoadScroll();
     SearchPageEnhancer.init();
-    
-    // 4. DOM 변경 감지 옵저버 설정
+
     setupObservers();
 
-    // 5. 페이지 로드 시 매크로 실행 여부 확인
     await Events.triggerMacroNavigation();
 
-    // 6. 설정 변경 및 페이지 상태에 따른 리스너들을 등록합니다.
-    settingsStore.$subscribe(() => {
-        handleAutoRefresherState();
-    });
-    document.addEventListener('visibilitychange', () => {
-        if (settingsStore.pauseOnInactiveEnabled) {
-            document.visibilityState === 'visible' ? handleAutoRefresherState() : AutoRefresher.stop();
-        }
-    });
+    // [수정] 이벤트 리스너를 단순화합니다.
+    settingsStore.$subscribe(handleAutoRefresherState);
+
+    // visibilitychange 리스너는 이제 필요 없습니다.
+    // document.removeEventListener('visibilitychange', ...);
+
     window.addEventListener('focus', () => {
-        if (AutoRefresher.timerId) AutoRefresher.restoreOriginalTitle();
-        const newPosts = document.querySelectorAll<HTMLElement>('tr.new-post-highlight');
-        if (newPosts.length > 0) {
-            newPosts.forEach(post => {
-                post.classList.add('highlight-start');
-                setTimeout(() => post.classList.remove('new-post-highlight', 'highlight-start'), 2500);
-            });
-        }
+      // 포커스가 돌아오면 background.ts가 리더를 재선출하고, leaderUpdate 메시지를 보낼 것입니다.
+      // 여기서는 UI 효과만 처리합니다.
+      if (AutoRefresher.timerId) AutoRefresher.restoreOriginalTitle();
+      const newPosts = document.querySelectorAll<HTMLElement>('tr.new-post-highlight');
+      if (newPosts.length > 0) {
+        newPosts.forEach((post) => {
+          post.classList.add('highlight-start');
+          setTimeout(() => post.classList.remove('new-post-highlight', 'highlight-start'), 2500);
+        });
+      }
     });
 
-    // 7. 모든 설정이 끝난 후, 자동 새로고침 상태를 최종적으로 확인합니다.
-    await handleAutoRefresherState();
+    chrome.runtime.sendMessage({ action: 'contentScriptLoaded' });
+
+    handleAutoRefresherState();
 
     console.log('✅ DCInside ShortCut 준비 완료!');
-
   } catch (error) {
     console.error('[Main] 초기화 중 심각한 오류 발생:', error);
   }

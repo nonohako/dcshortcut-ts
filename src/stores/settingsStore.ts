@@ -13,10 +13,23 @@ interface SaveResult {
 }
 
 type ShortcutAction =
-  | 'W' | 'C' | 'D' | 'R' | 'Q' | 'E'
-  | 'F' | 'G' | 'A' | 'S' | 'Z' | 'X'
-  | 'PrevProfile' | 'NextProfile' | 'SubmitComment'
-  | 'SubmitImagePost' | 'ToggleModal';
+  | 'W'
+  | 'C'
+  | 'D'
+  | 'R'
+  | 'Q'
+  | 'E'
+  | 'F'
+  | 'G'
+  | 'A'
+  | 'S'
+  | 'Z'
+  | 'X'
+  | 'PrevProfile'
+  | 'NextProfile'
+  | 'SubmitComment'
+  | 'SubmitImagePost'
+  | 'ToggleModal';
 
 type ShortcutKeysState = { [key: string]: string };
 type ShortcutEnabledState = { [key: string]: boolean };
@@ -46,7 +59,11 @@ interface SettingsStoreReturn {
   savePageNavigationMode: (mode: PageNavigationMode) => Promise<void>;
   saveAltNumberEnabled: (enabled: boolean) => Promise<void>;
   saveShortcutEnabled: (storageKey: string, enabled: boolean) => Promise<void>;
-  saveShortcutKey: (storageKey: string, newKey: string, isAltRequired?: boolean) => Promise<SaveResult>;
+  saveShortcutKey: (
+    storageKey: string,
+    newKey: string,
+    isAltRequired?: boolean
+  ) => Promise<SaveResult>;
   saveMacroInterval: (interval: number | string) => Promise<SaveResult>;
   saveShortcutDRefreshCommentEnabled: (enabled: boolean) => Promise<void>;
   saveFavoritesPreviewEnabled: (enabled: boolean) => Promise<void>;
@@ -65,13 +82,28 @@ interface SettingsStoreReturn {
 // =================================================================
 
 const defaultShortcutKeys: Record<ShortcutAction, string> = {
-  W: 'W', C: 'C', D: 'D', R: 'R', Q: 'Q', E: 'E',
-  F: 'F', G: 'G', A: 'A', S: 'S', Z: 'Z', X: 'X',
-  PrevProfile: '[', NextProfile: ']',
-  SubmitComment: 'D', SubmitImagePost: 'W', ToggleModal: '`',
+  W: 'W',
+  C: 'C',
+  D: 'D',
+  R: 'R',
+  Q: 'Q',
+  E: 'E',
+  F: 'F',
+  G: 'G',
+  A: 'A',
+  S: 'S',
+  Z: 'Z',
+  X: 'X',
+  PrevProfile: '[',
+  NextProfile: ']',
+  SubmitComment: 'D',
+  SubmitImagePost: 'W',
+  ToggleModal: '`',
 };
 
-const customizableShortcutActions: ShortcutAction[] = Object.keys(defaultShortcutKeys) as ShortcutAction[];
+const customizableShortcutActions: ShortcutAction[] = Object.keys(
+  defaultShortcutKeys
+) as ShortcutAction[];
 
 // =================================================================
 // Pinia Store Definition (Pinia 스토어 정의)
@@ -101,30 +133,50 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   async function loadSettings(): Promise<void> {
     console.log('[Pinia] 스토리지에서 설정 로딩 중...');
     const promises: Promise<any>[] = [
-      Storage.getPageNavigationMode().then(val => pageNavigationMode.value = val),
-      Storage.getAltNumberEnabled().then(val => altNumberEnabled.value = val),
-      Storage.getMacroInterval().then(val => macroInterval.value = val),
-      Storage.getShortcutDRefreshCommentEnabled().then(val => shortcutDRefreshCommentEnabled.value = val),
-      Storage.getFavoritesPreviewEnabled().then(val => favoritesPreviewEnabled.value = val),
-      Storage.getFavoritesPreviewOpacity().then(val => favoritesPreviewOpacity.value = val),
-      Storage.getAutoRefreshEnabled().then(val => autoRefreshEnabled.value = val),
-      Storage.getAutoRefreshInterval().then(val => autoRefreshInterval.value = val),
-      Storage.getShortcutEnabled('shortcutMacroZEnabled').then(val => macroZEnabled.value = val),
-      Storage.getShortcutEnabled('shortcutMacroXEnabled').then(val => macroXEnabled.value = val),
-      Storage.getShortcutEnabled('shortcutSubmitCommentKeyEnabled').then(val => shortcutSubmitCommentKeyEnabled.value = val),
-      Storage.getShortcutEnabled('shortcutSubmitImagePostKeyEnabled').then(val => shortcutSubmitImagePostKeyEnabled.value = val),
-      Storage.getShortcutEnabled('shortcutToggleModalKeyEnabled').then(val => shortcutToggleModalKeyEnabled.value = val),
-      Storage.getPauseOnInactiveEnabled().then(val => pauseOnInactiveEnabled.value = val),
+      Storage.getPageNavigationMode().then((val) => (pageNavigationMode.value = val)),
+      Storage.getAltNumberEnabled().then((val) => (altNumberEnabled.value = val)),
+      Storage.getMacroInterval().then((val) => (macroInterval.value = val)),
+      Storage.getShortcutDRefreshCommentEnabled().then(
+        (val) => (shortcutDRefreshCommentEnabled.value = val)
+      ),
+      Storage.getFavoritesPreviewEnabled().then((val) => (favoritesPreviewEnabled.value = val)),
+      Storage.getFavoritesPreviewOpacity().then((val) => (favoritesPreviewOpacity.value = val)),
+      Storage.getAutoRefreshEnabled().then((val) => (autoRefreshEnabled.value = val)),
+      Storage.getAutoRefreshInterval().then((val) => (autoRefreshInterval.value = val)),
+      Storage.getShortcutEnabled('shortcutMacroZEnabled').then(
+        (val) => (macroZEnabled.value = val)
+      ),
+      Storage.getShortcutEnabled('shortcutMacroXEnabled').then(
+        (val) => (macroXEnabled.value = val)
+      ),
+      Storage.getShortcutEnabled('shortcutSubmitCommentKeyEnabled').then(
+        (val) => (shortcutSubmitCommentKeyEnabled.value = val)
+      ),
+      Storage.getShortcutEnabled('shortcutSubmitImagePostKeyEnabled').then(
+        (val) => (shortcutSubmitImagePostKeyEnabled.value = val)
+      ),
+      Storage.getShortcutEnabled('shortcutToggleModalKeyEnabled').then(
+        (val) => (shortcutToggleModalKeyEnabled.value = val)
+      ),
+      Storage.getPauseOnInactiveEnabled().then((val) => (pauseOnInactiveEnabled.value = val)),
     ];
 
-    customizableShortcutActions.forEach(action => {
+    customizableShortcutActions.forEach((action) => {
       const keyKey = `shortcut${action}Key`;
-      promises.push(Storage.getShortcutKey(keyKey).then(val => shortcutKeys[keyKey] = val ?? defaultShortcutKeys[action]));
+      promises.push(
+        Storage.getShortcutKey(keyKey).then(
+          (val) => (shortcutKeys[keyKey] = val ?? defaultShortcutKeys[action])
+        )
+      );
 
       const isAltShortcut = ['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(action);
       if (!isAltShortcut) {
         const enabledKey = `shortcut${action}Enabled`;
-        promises.push(Storage.getShortcutEnabled(enabledKey).then(val => shortcutEnabled[enabledKey] = (val !== false)));
+        promises.push(
+          Storage.getShortcutEnabled(enabledKey).then(
+            (val) => (shortcutEnabled[enabledKey] = val !== false)
+          )
+        );
       }
     });
 
@@ -146,30 +198,56 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   async function saveShortcutEnabled(storageKey: string, enabled: boolean): Promise<void> {
     await Storage.saveShortcutEnabled(storageKey, enabled);
     switch (storageKey) {
-      case 'shortcutMacroZEnabled': macroZEnabled.value = enabled; break;
-      case 'shortcutMacroXEnabled': macroXEnabled.value = enabled; break;
-      case 'shortcutSubmitCommentKeyEnabled': shortcutSubmitCommentKeyEnabled.value = enabled; break;
-      case 'shortcutSubmitImagePostKeyEnabled': shortcutSubmitImagePostKeyEnabled.value = enabled; break;
-      case 'shortcutToggleModalKeyEnabled': shortcutToggleModalKeyEnabled.value = enabled; break;
-      default: shortcutEnabled[storageKey] = enabled; break;
+      case 'shortcutMacroZEnabled':
+        macroZEnabled.value = enabled;
+        break;
+      case 'shortcutMacroXEnabled':
+        macroXEnabled.value = enabled;
+        break;
+      case 'shortcutSubmitCommentKeyEnabled':
+        shortcutSubmitCommentKeyEnabled.value = enabled;
+        break;
+      case 'shortcutSubmitImagePostKeyEnabled':
+        shortcutSubmitImagePostKeyEnabled.value = enabled;
+        break;
+      case 'shortcutToggleModalKeyEnabled':
+        shortcutToggleModalKeyEnabled.value = enabled;
+        break;
+      default:
+        shortcutEnabled[storageKey] = enabled;
+        break;
     }
   }
 
-  async function saveShortcutKey(storageKey: string, newKey: string, isAltRequired: boolean = false): Promise<SaveResult> {
+  async function saveShortcutKey(
+    storageKey: string,
+    newKey: string,
+    isAltRequired: boolean = false
+  ): Promise<SaveResult> {
     newKey = newKey.toUpperCase();
     if (newKey.length !== 1 || !/^[A-Z0-9\[\]`]$/.test(newKey)) {
-      return { success: false, message: "단축키는 영문(A-Z), 숫자(0-9), 특수문자([, ], `)만 가능합니다." };
+      return {
+        success: false,
+        message: '단축키는 영문(A-Z), 숫자(0-9), 특수문자([, ], `)만 가능합니다.',
+      };
     }
 
     for (const action of customizableShortcutActions) {
       const otherStorageKey = `shortcut${action}Key`;
       if (otherStorageKey === storageKey) continue;
-      const currentAssignedKey = (shortcutKeys[otherStorageKey] ?? defaultShortcutKeys[action]).toUpperCase();
+      const currentAssignedKey = (
+        shortcutKeys[otherStorageKey] ?? defaultShortcutKeys[action]
+      ).toUpperCase();
       if (currentAssignedKey === newKey) {
-        const otherActionIsAlt = ['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(action);
+        const otherActionIsAlt = ['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(
+          action
+        );
         if (isAltRequired === otherActionIsAlt) {
           const conflictLabel = `${action} 키`;
-          return { success: false, message: `'${newKey}'는 이미 ${conflictLabel}에 할당되어 있습니다.` };
+          return {
+            success: false,
+            message: `'${newKey}'는 이미 ${conflictLabel}에 할당되어 있습니다.`,
+          };
         }
       }
     }
@@ -182,7 +260,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   async function saveMacroInterval(interval: number | string): Promise<SaveResult> {
     const numericInterval = Number(interval);
     if (isNaN(numericInterval) || numericInterval < 500) {
-      return { success: false, message: "매크로 간격은 500ms 이상이어야 합니다." };
+      return { success: false, message: '매크로 간격은 500ms 이상이어야 합니다.' };
     }
     await Storage.saveMacroInterval(numericInterval);
     macroInterval.value = numericInterval;
@@ -202,7 +280,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   async function saveFavoritesPreviewOpacity(opacity: number | string): Promise<SaveResult> {
     const numericOpacity = Number(opacity);
     if (isNaN(numericOpacity) || numericOpacity < 0.1 || numericOpacity > 1.0) {
-      return { success: false, message: "투명도는 0.1에서 1.0 사이 값이어야 합니다." };
+      return { success: false, message: '투명도는 0.1에서 1.0 사이 값이어야 합니다.' };
     }
     await Storage.saveFavoritesPreviewOpacity(numericOpacity);
     favoritesPreviewOpacity.value = numericOpacity;
@@ -217,7 +295,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   async function saveAutoRefreshInterval(interval: number | string): Promise<SaveResult> {
     const numericInterval = Number(interval);
     if (isNaN(numericInterval) || numericInterval < 1) {
-      return { success: false, message: "확인 간격은 1초 이상이어야 합니다." };
+      return { success: false, message: '확인 간격은 1초 이상이어야 합니다.' };
     }
     await Storage.saveAutoRefreshInterval(numericInterval);
     autoRefreshInterval.value = numericInterval;

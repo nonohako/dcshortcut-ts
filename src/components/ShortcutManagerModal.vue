@@ -472,7 +472,7 @@ onMounted(() => {
   height: 800px;
   display: flex;
   flex-direction: column;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-family: "Noto Sans CJK KR", "NanumGothic", sans-serif;
   border: 1px solid #dee2e6;
   transition: opacity 0.25s ease-out, transform 0.25s ease-out;
   opacity: 0;
@@ -512,6 +512,8 @@ onMounted(() => {
   margin-bottom: -1px;
   border-bottom: 2px solid transparent;
   transition: color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+  white-space: nowrap;
+  width: auto;
 }
 
 .tab-button:hover {

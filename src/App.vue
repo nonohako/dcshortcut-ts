@@ -41,6 +41,10 @@
   */
   
   /* Vue 애플리케이션의 루트 컨테이너 스타일 */
+  #dc-ShortCut-root * {
+    font-family: "Noto Sans CJK KR", "NanumGothic", sans-serif !important; /* Fallback to system sans-serif if specified fonts not available */
+  }
+
   #dc-ShortCut-root {
     position: relative; /* 자식 요소(특히 Teleport된 요소)의 위치 기준점으로 작동할 수 있음 */
     z-index: 9999; /* 모달이나 툴팁보다는 낮은 z-index를 가집니다. */

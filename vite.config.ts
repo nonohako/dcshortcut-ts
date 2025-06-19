@@ -1,3 +1,4 @@
+// vite.config.js
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
@@ -10,29 +11,33 @@ export default defineConfig({
       targets: [
         { src: 'manifest.json', dest: '.' },
         { src: 'icons', dest: '.' },
-        // [삭제] popup.css는 Vite가 직접 처리하므로 static-copy에서 제거합니다.
       ]
     })
   ],
   build: {
     outDir: 'dist',
-    sourcemap: false,
+    sourcemap: false, // 프로덕션 빌드에서는 sourcemap을 false로 하는 것이 일반적입니다.
     rollupOptions: {
       input: {
-        // [수정] popup.html의 경로는 계속 프로젝트 루트를 가리킵니다.
         popup: path.resolve(__dirname, 'popup.html'),
         background: path.resolve(__dirname, 'src/background/background.ts'),
         'content-script': path.resolve(__dirname, 'src/content-script/main.ts'),
       },
       output: {
-        // [수정] 모든 출력 파일의 이름을 간단하고 예측 가능하게 만듭니다.
-        // entryFileNames, chunkFileNames, assetFileNames를 하나로 통합합니다.
         entryFileNames: `[name].js`,
         chunkFileNames: `assets/js/[name].js`,
-        assetFileNames: `[name].[ext]`, // CSS 파일 등이 [name].[ext] 형태로 루트에 생성됩니다.
+        assetFileNames: `[name].[ext]`,
       },
     },
     emptyOutDir: true,
+    // --- 콘솔 로그 제거 옵션 추가 ---
+    terserOptions: {
+      compress: {
+        drop_console: true, // 모든 console.* 구문 제거
+        drop_debugger: true, // debugger 구문 제거
+      },
+    },
+    // --- 콘솔 로그 제거 옵션 추가 끝 ---
   },
   resolve: {
     alias: {
