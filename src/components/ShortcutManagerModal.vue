@@ -4,9 +4,12 @@
 
     <!-- 탭 네비게이션 -->
     <div class="tabs">
-      <button class="tab-button" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">일반 설정</button>
-      <button class="tab-button" :class="{ active: activeTab === 'advanced' }" @click="activeTab = 'advanced'">고급 기능</button>
-      <button class="tab-button" :class="{ active: activeTab === 'refresh' }" @click="activeTab = 'refresh'">자동 새로고침</button>
+      <button class="tab-button" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">일반
+        설정</button>
+      <button class="tab-button" :class="{ active: activeTab === 'advanced' }" @click="activeTab = 'advanced'">고급
+        기능</button>
+      <button class="tab-button" :class="{ active: activeTab === 'refresh' }" @click="activeTab = 'refresh'">자동
+        새로고침</button>
       <button class="tab-button" :class="{ active: activeTab === 'macros' }" @click="activeTab = 'macros'">매크로</button>
       <button class="tab-button" :class="{ active: activeTab === 'data' }" @click="activeTab = 'data'">데이터 관리</button>
     </div>
@@ -36,7 +39,8 @@
             :currentKey="settingsStore.shortcutKeys.shortcutDKey" storageKeyEnabled="shortcutDEnabled"
             storageKeyKey="shortcutDKey" @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <ShortcutToggle :label="getShortcutLabel('DRefresh')" :enabled="settingsStore.shortcutDRefreshCommentEnabled"
-            storageKeyEnabled="shortcutDRefreshCommentEnabled" :isKeyEditable="false" @update:enabled="updateShortcutDRefreshCommentEnabled" />
+            storageKeyEnabled="shortcutDRefreshCommentEnabled" :isKeyEditable="false"
+            @update:enabled="updateShortcutDRefreshCommentEnabled" />
         </div>
 
         <div class="shortcut-section">
@@ -76,7 +80,8 @@
             storageKeyEnabled="shortcutNextProfileEnabled" storageKeyKey="shortcutNextProfileKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <ShortcutToggle label="Alt - 미리보기 표시" :enabled="settingsStore.favoritesPreviewEnabled"
-            storageKeyEnabled="favoritesPreviewEnabled" @update:enabled="updateFavoritesPreviewEnabled" :isKeyEditable="false" />
+            storageKeyEnabled="favoritesPreviewEnabled" @update:enabled="updateFavoritesPreviewEnabled"
+            :isKeyEditable="false" />
           <div class="shortcut-interval-setting" v-if="settingsStore.favoritesPreviewEnabled">
             <label for="preview-opacity" class="interval-label">미리보기 투명도</label>
             <div class="slider-container">
@@ -103,7 +108,8 @@
             storageKeyEnabled="autoRefreshEnabled" @update:enabled="updateAutoRefreshEnabled" :isKeyEditable="false" />
           <ShortcutToggle v-if="settingsStore.autoRefreshEnabled" label="비활성 탭에서 새로고침 일시중지"
             tooltipText="다른 탭을 보거나 브라우저를 최소화하면 새로고침을 멈춰 리소스를 절약합니다." :enabled="settingsStore.pauseOnInactiveEnabled"
-            storageKeyEnabled="pauseOnInactiveEnabled" @update:enabled="updatePauseOnInactiveEnabled" :isKeyEditable="false" />
+            storageKeyEnabled="pauseOnInactiveEnabled" @update:enabled="updatePauseOnInactiveEnabled"
+            :isKeyEditable="false" />
           <div class="shortcut-interval-setting" v-if="settingsStore.autoRefreshEnabled">
             <label for="auto-refresh-interval" class="interval-label">새로고침 간격 (초)</label>
             <input type="number" id="auto-refresh-interval" class="interval-input"
@@ -397,10 +403,10 @@ const handleFileRestore = async (event: Event): Promise<void> => {
         console.warn("구 버전 백업 파일을 감지했습니다. '기본' 프로필로 복원합니다.");
         // 간단한 유효성 검사
         for (const key in parsedData) {
-            const item = parsedData[key];
-            if (typeof item?.galleryId !== 'string' || typeof item?.name !== 'string') {
-                throw new Error(`백업 파일의 ${key}번 항목 데이터가 올바르지 않습니다.`);
-            }
+          const item = parsedData[key];
+          if (typeof item?.galleryId !== 'string' || typeof item?.name !== 'string') {
+            throw new Error(`백업 파일의 ${key}번 항목 데이터가 올바르지 않습니다.`);
+          }
         }
         // 구 버전 데이터를 '기본' 프로필 아래에 중첩하여 새 형식으로 변환
         dataToRestore = { '기본': parsedData as FavoriteGalleries };
@@ -540,7 +546,7 @@ onMounted(() => {
   border: 1px solid #e9ecef;
 }
 
-.tab-pane > .shortcut-section:last-of-type {
+.tab-pane>.shortcut-section:last-of-type {
   margin-bottom: 0;
 }
 
@@ -655,11 +661,11 @@ onMounted(() => {
   background-color: #ffca2c;
 }
 
-.shortcut-section > :deep(.shortcut-toggle) {
+.shortcut-section> :deep(.shortcut-toggle) {
   margin-bottom: 8px;
 }
 
-.shortcut-section > :deep(.shortcut-toggle:last-child) {
+.shortcut-section> :deep(.shortcut-toggle:last-child) {
   margin-bottom: 0;
 }
 
