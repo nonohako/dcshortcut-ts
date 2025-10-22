@@ -1070,68 +1070,74 @@ const Events: EventsModuleType = {
       const keys = this.settingsStore.shortcutKeys;
       const defaults = this.settingsStore.defaultShortcutKeys;
 
+      // 1. 먼저 어떤 동작에 해당하는 키인지 확인합니다.
+      let targetAction: string | null = null;
       const prevProfileKey = (keys.shortcutPrevProfileKey || defaults.PrevProfile).toUpperCase();
       const nextProfileKey = (keys.shortcutNextProfileKey || defaults.NextProfile).toUpperCase();
-
-      if (keyUpper === prevProfileKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (this.settingsStore.favoritesPreviewEnabled && this._isAltPressed)
-          await this.cycleProfile('prev');
-        return;
-      }
-      if (keyUpper === nextProfileKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (this.settingsStore.favoritesPreviewEnabled && this._isAltPressed)
-          await this.cycleProfile('next');
-        return;
-      }
-
-      if (event.key >= '0' && event.key <= '9') {
-        event.preventDefault();
-        event.stopPropagation();
-        if (this.settingsStore.altNumberEnabled) {
-          await this.gallery.handleFavoriteKey(event.key, this.favoritesStore);
-        }
-        return;
-      }
-
       const submitCommentKey = (
         keys.shortcutSubmitCommentKey || defaults.SubmitComment
       ).toUpperCase();
-      if (submitCommentKey && keyUpper === submitCommentKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (this.settingsStore.shortcutSubmitCommentKeyEnabled) {
-          document.querySelector<HTMLButtonElement>('button.btn_svc.repley_add')?.click();
-        }
-        return;
-      }
-
       const submitImagePostKey = (
         keys.shortcutSubmitImagePostKey || defaults.SubmitImagePost
       ).toUpperCase();
-      if (submitImagePostKey && keyUpper === submitImagePostKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (this.settingsStore.shortcutSubmitImagePostKeyEnabled) {
-          document.querySelector<HTMLButtonElement>('button.btn_svc.write[type="image"]')?.click();
-        }
-        return;
+      const toggleModalKey = (keys.shortcutToggleModalKey || defaults.ToggleModal).toUpperCase();
+
+      if (keyUpper === prevProfileKey) {
+        targetAction = 'PrevProfile';
+      } else if (keyUpper === nextProfileKey) {
+        targetAction = 'NextProfile';
+      } else if (event.key >= '0' && event.key <= '9' && this.settingsStore.altNumberEnabled) {
+        targetAction = 'FavoriteNumber';
+      } else if (
+        keyUpper === submitCommentKey &&
+        this.settingsStore.shortcutSubmitCommentKeyEnabled
+      ) {
+        targetAction = 'SubmitComment';
+      } else if (
+        keyUpper === submitImagePostKey &&
+        this.settingsStore.shortcutSubmitImagePostKeyEnabled
+      ) {
+        targetAction = 'SubmitImagePost';
+      } else if (keyUpper === toggleModalKey && this.settingsStore.shortcutToggleModalKeyEnabled) {
+        targetAction = 'ToggleModal';
       }
 
-      const toggleModalKey = (keys.shortcutToggleModalKey || defaults.ToggleModal).toUpperCase();
-      if (toggleModalKey && keyUpper === toggleModalKey) {
+      // 2. 스크립트가 처리해야 할 단축키(targetAction이 확인된 경우)에만 기본 동작을 막습니다.
+      if (targetAction) {
         event.preventDefault();
         event.stopPropagation();
-        if (this.settingsStore.shortcutToggleModalKeyEnabled) {
-          this.uiStore.activeModal === 'shortcuts'
-            ? this.uiStore.closeModal()
-            : this.uiStore.toggleFavorites();
+
+        // 3. 확인된 동작을 실행합니다.
+        switch (targetAction) {
+          case 'PrevProfile':
+            if (this.settingsStore.favoritesPreviewEnabled && this._isAltPressed) {
+              await this.cycleProfile('prev');
+            }
+            break;
+          case 'NextProfile':
+            if (this.settingsStore.favoritesPreviewEnabled && this._isAltPressed) {
+              await this.cycleProfile('next');
+            }
+            break;
+          case 'FavoriteNumber':
+            await this.gallery.handleFavoriteKey(event.key, this.favoritesStore);
+            break;
+          case 'SubmitComment':
+            document.querySelector<HTMLButtonElement>('button.btn_svc.repley_add')?.click();
+            break;
+          case 'SubmitImagePost':
+            document
+              .querySelector<HTMLButtonElement>('button.btn_svc.write[type="image"]')
+              ?.click();
+            break;
+          case 'ToggleModal':
+            this.uiStore.activeModal === 'shortcuts'
+              ? this.uiStore.closeModal()
+              : this.uiStore.toggleFavorites();
+            break;
         }
-        return;
       }
+      return;
     }
 
     if (!event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
