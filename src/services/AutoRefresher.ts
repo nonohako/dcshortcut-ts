@@ -372,8 +372,8 @@ const AutoRefresher: AutoRefresherType = {
       rowsToRemove.forEach((row) => row.remove());
     }
 
-    this.postsModule.addNumberLabels();
-    this.postsModule.formatDates();
+    this.postsModule.addNumberLabels(this.settingsStore?.numberLabelsEnabled ?? true);
+    this.postsModule.formatDates(this.settingsStore?.showDateInListEnabled ?? true);
   },
 };
 

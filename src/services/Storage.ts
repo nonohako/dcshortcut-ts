@@ -82,6 +82,20 @@ const Storage = {
     }
   },
 
+  // --- Number label toggle ---
+  async getNumberLabelsEnabled(): Promise<boolean> {
+    const defaultValue = true;
+    return await this.getData('numberLabelsEnabled', defaultValue);
+  },
+
+  async saveNumberLabelsEnabled(enabled: boolean): Promise<void> {
+    try {
+      await this.setData('numberLabelsEnabled', enabled);
+    } catch (error) {
+      console.error('Failed to save numberLabelsEnabled:', error);
+    }
+  },
+
   // --- 게시글 목록 자동 새로고침 ---
   async getAutoRefreshEnabled(): Promise<boolean> {
     const defaultValue = false; // 기본값: 비활성화
@@ -186,6 +200,34 @@ const Storage = {
       await this.setData('altNumberEnabled', enabled);
     } catch (error) {
       console.error('Failed to save altNumberEnabled:', error);
+    }
+  },
+
+  // --- 작성일 표기 (날짜 표시) ---
+  async getShowDateInListEnabled(): Promise<boolean> {
+    const defaultValue = true;
+    return await this.getData('showDateInListEnabled', defaultValue);
+  },
+
+  async saveShowDateInListEnabled(enabled: boolean): Promise<void> {
+    try {
+      await this.setData('showDateInListEnabled', enabled);
+    } catch (error) {
+      console.error('Failed to save showDateInListEnabled:', error);
+    }
+  },
+
+  // --- 숫자키 라벨 이동 ---
+  async getNumberNavigationEnabled(): Promise<boolean> {
+    const defaultValue = true;
+    return await this.getData('numberNavigationEnabled', defaultValue);
+  },
+
+  async saveNumberNavigationEnabled(enabled: boolean): Promise<void> {
+    try {
+      await this.setData('numberNavigationEnabled', enabled);
+    } catch (error) {
+      console.error('Failed to save numberNavigationEnabled:', error);
     }
   },
 

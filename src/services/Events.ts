@@ -490,8 +490,94 @@ const Events: EventsModuleType = {
 
     try {
       const { doc } = await this.fetchPage(targetLinkUrl);
-      const currentTbodies = document.querySelectorAll('table.gall_list tbody');
-      const newTbodies = doc.querySelectorAll('table.gall_list tbody');
+      const currentTable = document.querySelector<HTMLTableElement>('table.gall_list');
+      const newTable = doc.querySelector<HTMLTableElement>('table.gall_list');
+
+      const createCheckboxCell = (): HTMLTableCellElement => {
+        const checkboxTd = document.createElement('td');
+        checkboxTd.className = 'gall_chk';
+        const span = document.createElement('span');
+        span.className = 'checkbox';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.name = 'chk_article[]';
+        input.className = 'list_chkbox article_chkbox';
+        const em = document.createElement('em');
+        em.className = 'checkmark';
+        const label = document.createElement('label');
+        label.className = 'blind';
+        label.textContent = '글 선택';
+        span.appendChild(input);
+        span.appendChild(em);
+        span.appendChild(label);
+        checkboxTd.appendChild(span);
+        return checkboxTd;
+      };
+
+      const createHeaderCheckboxCell = (): HTMLTableCellElement => {
+        const th = document.createElement('th');
+        th.className = 'gall_chk';
+        return th;
+      };
+
+      const hasCheckboxCurrent = !!currentTable?.querySelector('td.gall_chk, th.gall_chk');
+      const hasCheckboxNew = !!newTable?.querySelector('td.gall_chk, th.gall_chk');
+      const targetHasCheckbox = hasCheckboxCurrent || hasCheckboxNew;
+
+      const currentTbodies =
+        currentTable?.querySelectorAll('tbody') ?? document.querySelectorAll('table.gall_list tbody');
+      const newTbodies =
+        newTable?.querySelectorAll('tbody') ?? doc.querySelectorAll('table.gall_list tbody');
+
+      const headerRow =
+        currentTable?.tHead?.querySelector<HTMLTableRowElement>('tr') ??
+        newTable?.tHead?.querySelector<HTMLTableRowElement>('tr') ??
+        null;
+      const headerCellCount = headerRow?.cells.length ?? null;
+
+      const sampleBodyRow =
+        currentTable?.querySelector<HTMLTableRowElement>('tbody tr') ??
+        newTable?.querySelector<HTMLTableRowElement>('tbody tr') ??
+        null;
+      const sampleBodyCellCount = sampleBodyRow?.cells.length ?? null;
+      const colgroupCount =
+        currentTable?.querySelectorAll('col').length ??
+        newTable?.querySelectorAll('col').length ??
+        null;
+
+      const targetColumnCount =
+        headerCellCount ??
+        sampleBodyCellCount ??
+        colgroupCount ??
+        currentTbodies[0]?.querySelector('tr')?.cells.length ??
+        null;
+
+      if (currentTable && newTable) {
+        const currentColgroup = currentTable.querySelector('colgroup');
+        const newColgroup = newTable.querySelector('colgroup');
+        if (currentColgroup && newColgroup) {
+          const mergedColgroup = newColgroup.cloneNode(true) as HTMLTableColElement;
+          if (
+            targetHasCheckbox &&
+            targetColumnCount &&
+            mergedColgroup.children.length < targetColumnCount
+          ) {
+            const checkboxCol = document.createElement('col');
+            const referenceWidth =
+              currentColgroup.querySelector('col')?.style.width ||
+              (newColgroup.querySelector('col')?.style.width ?? '25px');
+            if (referenceWidth) checkboxCol.style.width = referenceWidth;
+            mergedColgroup.insertBefore(checkboxCol, mergedColgroup.firstChild);
+          }
+          currentColgroup.innerHTML = mergedColgroup.innerHTML;
+        }
+
+        const currentThead = currentTable.querySelector('thead');
+        const newThead = newTable.querySelector('thead');
+        if (currentThead && newThead) {
+          currentThead.innerHTML = newThead.innerHTML;
+        }
+      }
 
       let currentPagingWrap = document.querySelector(
         '.bottom_paging_wrap.re, .bottom_paging_wrapre'
@@ -513,6 +599,21 @@ const Events: EventsModuleType = {
         currentTbodies.forEach((tbody, index) => {
           tbody.innerHTML = newTbodies[index] ? newTbodies[index].innerHTML : '';
         });
+
+        if (targetColumnCount && targetHasCheckbox) {
+          currentTbodies.forEach((tbody) => {
+            tbody.querySelectorAll<HTMLTableRowElement>('tr').forEach((row) => {
+              const hasNumCell = row.querySelector('td.gall_num');
+              const hasCheckbox = row.querySelector('td.gall_chk');
+              if (!hasNumCell || hasCheckbox) return;
+
+              const needsPad = row.cells.length <= targetColumnCount - 1;
+              if (needsPad) {
+                row.insertBefore(createCheckboxCell(), row.firstChild);
+              }
+            });
+          });
+        }
       } else if (newTbodies.length > 0) {
         console.error('Cannot dynamically add new tbody to a page without one.');
       }
@@ -523,9 +624,19 @@ const Events: EventsModuleType = {
         console.warn('Cannot insert new pagination dynamically.');
       }
 
+      // Ensure thead also has the checkbox column when 필요한
+      if (targetHasCheckbox && targetColumnCount && currentTable?.tHead) {
+        currentTable.tHead.querySelectorAll('tr').forEach((row) => {
+          const hasCheckbox = row.querySelector('th.gall_chk');
+          if (!hasCheckbox && row.cells.length <= targetColumnCount - 1) {
+            row.insertBefore(createHeaderCheckboxCell(), row.firstChild);
+          }
+        });
+      }
+
       this.posts.adjustColgroupWidths();
-      this.posts.addNumberLabels();
-      this.posts.formatDates();
+      this.posts.addNumberLabels(this.settingsStore?.numberLabelsEnabled ?? true);
+      this.posts.formatDates(this.settingsStore?.showDateInListEnabled ?? true);
       addPrefetchHints();
 
       try {
@@ -1185,7 +1296,7 @@ const Events: EventsModuleType = {
         return;
       }
 
-      if (event.key >= '0' && event.key <= '9') {
+      if (event.key >= '0' && event.key <= '9' && this.settingsStore.numberNavigationEnabled) {
         const { validPosts } = this.posts.getValidPosts();
         const index = event.key === '0' ? 9 : parseInt(event.key, 10) - 1;
         if (validPosts?.[index]?.link) {

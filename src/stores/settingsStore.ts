@@ -41,6 +41,9 @@ interface SettingsStoreReturn {
   shortcutEnabled: ShortcutEnabledState;
   shortcutKeys: ShortcutKeysState;
   altNumberEnabled: Ref<boolean>;
+  numberLabelsEnabled: Ref<boolean>;
+  numberNavigationEnabled: Ref<boolean>;
+  showDateInListEnabled: Ref<boolean>;
   macroZEnabled: Ref<boolean>;
   macroXEnabled: Ref<boolean>;
   shortcutDRefreshCommentEnabled: Ref<boolean>;
@@ -58,6 +61,9 @@ interface SettingsStoreReturn {
   loadSettings: () => Promise<void>;
   savePageNavigationMode: (mode: PageNavigationMode) => Promise<void>;
   saveAltNumberEnabled: (enabled: boolean) => Promise<void>;
+  saveNumberLabelsEnabled: (enabled: boolean) => Promise<void>;
+  saveNumberNavigationEnabled: (enabled: boolean) => Promise<void>;
+  saveShowDateInListEnabled: (enabled: boolean) => Promise<void>;
   saveShortcutEnabled: (storageKey: string, enabled: boolean) => Promise<void>;
   saveShortcutKey: (
     storageKey: string,
@@ -115,6 +121,9 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   const shortcutEnabled = reactive<ShortcutEnabledState>({});
   const shortcutKeys = reactive<ShortcutKeysState>({});
   const altNumberEnabled = ref<boolean>(true);
+  const numberLabelsEnabled = ref<boolean>(true);
+  const numberNavigationEnabled = ref<boolean>(true);
+  const showDateInListEnabled = ref<boolean>(true);
   const macroZEnabled = ref<boolean>(true);
   const macroXEnabled = ref<boolean>(true);
   const shortcutDRefreshCommentEnabled = ref<boolean>(true);
@@ -135,6 +144,9 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     const promises: Promise<any>[] = [
       Storage.getPageNavigationMode().then((val) => (pageNavigationMode.value = val)),
       Storage.getAltNumberEnabled().then((val) => (altNumberEnabled.value = val)),
+      Storage.getNumberLabelsEnabled().then((val) => (numberLabelsEnabled.value = val)),
+      Storage.getNumberNavigationEnabled().then((val) => (numberNavigationEnabled.value = val)),
+      Storage.getShowDateInListEnabled().then((val) => (showDateInListEnabled.value = val)),
       Storage.getMacroInterval().then((val) => (macroInterval.value = val)),
       Storage.getShortcutDRefreshCommentEnabled().then(
         (val) => (shortcutDRefreshCommentEnabled.value = val)
@@ -193,6 +205,21 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   async function saveAltNumberEnabled(enabled: boolean): Promise<void> {
     await Storage.saveAltNumberEnabled(enabled);
     altNumberEnabled.value = enabled;
+  }
+
+  async function saveNumberLabelsEnabled(enabled: boolean): Promise<void> {
+    await Storage.saveNumberLabelsEnabled(enabled);
+    numberLabelsEnabled.value = enabled;
+  }
+
+  async function saveNumberNavigationEnabled(enabled: boolean): Promise<void> {
+    await Storage.saveNumberNavigationEnabled(enabled);
+    numberNavigationEnabled.value = enabled;
+  }
+
+  async function saveShowDateInListEnabled(enabled: boolean): Promise<void> {
+    await Storage.saveShowDateInListEnabled(enabled);
+    showDateInListEnabled.value = enabled;
   }
 
   async function saveShortcutEnabled(storageKey: string, enabled: boolean): Promise<void> {
@@ -313,6 +340,9 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     shortcutEnabled,
     shortcutKeys,
     altNumberEnabled,
+    numberLabelsEnabled,
+    numberNavigationEnabled,
+    showDateInListEnabled,
     macroZEnabled,
     macroXEnabled,
     shortcutDRefreshCommentEnabled,
@@ -328,6 +358,9 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     loadSettings,
     savePageNavigationMode,
     saveAltNumberEnabled,
+    saveNumberLabelsEnabled,
+    saveNumberNavigationEnabled,
+    saveShowDateInListEnabled,
     saveShortcutEnabled,
     saveShortcutKey,
     saveMacroInterval,

@@ -117,7 +117,7 @@ const Posts = {
    * 유효한 게시글 목록에 `[1]`, `[2]`... 와 같은 숫자 라벨을 시각적으로 추가합니다.
    * 개념글 목록 등 여러 tbody가 있는 페이지를 처리하는 원본 로직을 그대로 유지합니다.
    */
-  addNumberLabels(): void {
+  addNumberLabels(enable: boolean = true): void {
     // 1. 기존에 추가했던 모든 라벨 정보를 깨끗하게 제거.
     const previouslyLabeled = document.querySelectorAll<HTMLTableCellElement>(
       'td.gall_num.shortcut-labeled'
@@ -126,6 +126,8 @@ const Posts = {
       cell.classList.remove('shortcut-labeled');
       delete cell.dataset.shortcutLabel;
     });
+
+    if (!enable) return;
 
     // 2. 페이지의 모든 유효한 행을 순서대로 수집.
     const rowsToLabel: HTMLTableRowElement[] = [];
@@ -193,9 +195,11 @@ const Posts = {
   /**
    * 게시글 목록의 날짜 형식을 'MM.DD HH:mm' 또는 'HH:mm'(오늘)으로 변경합니다.
    */
-  formatDates(): void {
+  formatDates(enable: boolean = true): void {
     const today = new Date();
     const todayDateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    if (!enable) return;
 
     const dateCells = document.querySelectorAll<HTMLTableCellElement>(
       'td.gall_date:not(.date-formatted)'

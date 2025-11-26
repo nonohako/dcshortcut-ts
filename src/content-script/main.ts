@@ -119,6 +119,17 @@ function setupStorageListener(): void {
           case 'altNumberEnabled':
             settingsStore.altNumberEnabled = newValue;
             break;
+          case 'numberNavigationEnabled':
+            settingsStore.numberNavigationEnabled = newValue;
+            break;
+          case 'showDateInListEnabled':
+            settingsStore.showDateInListEnabled = newValue;
+            Posts.formatDates(newValue);
+            break;
+          case 'numberLabelsEnabled':
+            settingsStore.numberLabelsEnabled = newValue;
+            Posts.addNumberLabels(newValue);
+            break;
           case 'macroZEnabled':
             settingsStore.macroZEnabled = newValue;
             break;
@@ -265,8 +276,8 @@ window.AutoRefresher = AutoRefresher;
 function setupObservers(): void {
   const listObserver = new MutationObserver((mutations) => {
     if (mutations.some((m) => m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
-      Posts.addNumberLabels();
-      Posts.formatDates();
+      Posts.addNumberLabels(settingsStore.numberLabelsEnabled);
+      Posts.formatDates(settingsStore.showDateInListEnabled);
     }
   });
 
@@ -276,8 +287,8 @@ function setupObservers(): void {
       listObserver.disconnect();
       listObserver.observe(currentListTbody, { childList: true });
       Posts.adjustColgroupWidths();
-      Posts.addNumberLabels();
-      Posts.formatDates();
+      Posts.addNumberLabels(settingsStore.numberLabelsEnabled);
+      Posts.formatDates(settingsStore.showDateInListEnabled);
       addPrefetchHints();
     }
     setupTabFocus();
@@ -315,8 +326,8 @@ async function initialize(): Promise<void> {
     AutoRefresher.init(settingsStore, Posts, Events);
 
     Posts.adjustColgroupWidths();
-    Posts.addNumberLabels();
-    Posts.formatDates();
+    Posts.addNumberLabels(settingsStore.numberLabelsEnabled);
+    Posts.formatDates(settingsStore.showDateInListEnabled);
     setupTabFocus();
     focusSubjectInputOnWritePage();
     addPrefetchHints();

@@ -4,8 +4,7 @@
 
     <!-- 탭 네비게이션 -->
     <div class="tabs">
-      <button class="tab-button" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">일반
-        설정</button>
+      <button class="tab-button" :class="{ active: activeTab === 'shortcuts' }" @click="activeTab = 'shortcuts'">단축키</button>
       <button class="tab-button" :class="{ active: activeTab === 'advanced' }" @click="activeTab = 'advanced'">고급
         기능</button>
       <button class="tab-button" :class="{ active: activeTab === 'refresh' }" @click="activeTab = 'refresh'">자동
@@ -15,8 +14,8 @@
     </div>
 
     <div class="tab-content">
-      <!-- 일반 설정 탭 -->
-      <div v-show="activeTab === 'general'" class="tab-pane">
+      <!-- 단축키 탭 -->
+      <div v-show="activeTab === 'shortcuts'" class="tab-pane">
         <div class="shortcut-section">
           <div class="shortcut-section-title">페이지 탐색</div>
           <ShortcutToggle v-for="action in ['A', 'S', 'Z', 'X', 'Q', 'E', 'F', 'G', 'R']" :key="action"
@@ -56,19 +55,14 @@
             storageKeyEnabled="shortcutSubmitCommentKeyEnabled" storageKeyKey="shortcutSubmitCommentKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
         </div>
-      </div>
 
-      <!-- 고급 기능 탭 -->
-      <div v-show="activeTab === 'advanced'" class="tab-pane">
         <div class="shortcut-section">
-          <div class="shortcut-section-title">즐겨찾기</div>
+          <div class="shortcut-section-title">즐겨찾기/프로필</div>
           <ShortcutToggle :label="getShortcutLabel('ToggleModal')"
             :enabled="settingsStore.shortcutToggleModalKeyEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutToggleModalKey"
             storageKeyEnabled="shortcutToggleModalKeyEnabled" storageKeyKey="shortcutToggleModalKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
-          <ShortcutToggle label="ALT + 숫자 - 해당 번호 즐겨찾기로 바로 이동" :enabled="settingsStore.altNumberEnabled"
-            storageKeyEnabled="altNumberEnabled" @update:enabled="updateAltNumberEnabled" :isKeyEditable="false" />
           <ShortcutToggle :label="getShortcutLabel('PrevProfile')"
             :enabled="settingsStore.shortcutEnabled.shortcutPrevProfileEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutPrevProfileKey"
@@ -79,6 +73,24 @@
             :currentKey="settingsStore.shortcutKeys.shortcutNextProfileKey"
             storageKeyEnabled="shortcutNextProfileEnabled" storageKeyKey="shortcutNextProfileKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
+        </div>
+      </div>
+
+      <!-- 고급 기능 탭 -->
+      <div v-show="activeTab === 'advanced'" class="tab-pane">
+        <div class="shortcut-section">
+          <div class="shortcut-section-title">즐겨찾기</div>
+          <ShortcutToggle label="ALT + 숫자 - 해당 번호 즐겨찾기로 바로 이동" :enabled="settingsStore.altNumberEnabled"
+            storageKeyEnabled="altNumberEnabled" @update:enabled="updateAltNumberEnabled" :isKeyEditable="false" />
+          <ShortcutToggle label="숫자키 - 라벨 글 이동" :enabled="settingsStore.numberNavigationEnabled"
+            storageKeyEnabled="numberNavigationEnabled" @update:enabled="updateNumberNavigationEnabled"
+            :isKeyEditable="false" />
+          <ShortcutToggle label="목록 번호 라벨 표시" :enabled="settingsStore.numberLabelsEnabled"
+            storageKeyEnabled="numberLabelsEnabled" @update:enabled="updateNumberLabelsEnabled"
+            :isKeyEditable="false" />
+          <ShortcutToggle label="작성일에 시간 표시" :enabled="settingsStore.showDateInListEnabled"
+            storageKeyEnabled="showDateInListEnabled" @update:enabled="updateShowDateInListEnabled"
+            :isKeyEditable="false" />
           <ShortcutToggle label="Alt - 미리보기 표시" :enabled="settingsStore.favoritesPreviewEnabled"
             storageKeyEnabled="favoritesPreviewEnabled" @update:enabled="updateFavoritesPreviewEnabled"
             :isKeyEditable="false" />
@@ -170,6 +182,7 @@ import { useFavoritesStore } from '@/stores/favoritesStore';
 import type { FavoriteGalleries, FavoriteProfiles } from '@/stores/favoritesStore';
 import { useUiStore } from '@/stores/uiStore';
 import UI from '@/services/UI';
+import Posts from '@/services/Posts';
 import PageNavModeSelector from './PageNavModeSelector.vue';
 import ShortcutToggle from './ShortcutToggle.vue';
 import FootnoteTrigger from './FootnoteTrigger.vue';
@@ -178,7 +191,7 @@ import FootnoteTrigger from './FootnoteTrigger.vue';
 // Type Definitions (타입 정의)
 // =================================================================
 
-type TabName = 'general' | 'advanced' | 'refresh' | 'macros' | 'data';
+type TabName = 'shortcuts' | 'advanced' | 'refresh' | 'macros' | 'data';
 
 type ShortcutLabelKey = 'W' | 'C' | 'D' | 'R' | 'Q' | 'E' | 'F' | 'G' | 'A' | 'S' | 'Z' | 'X' |
   'PrevProfile' | 'NextProfile' | 'SubmitImagePost' | 'SubmitComment' |
@@ -196,7 +209,7 @@ const { profiles } = storeToRefs(favoritesStore);
 // Component Internal State (컴포넌트 내부 상태)
 // =================================================================
 const isVisible = ref<boolean>(false);
-const activeTab = ref<TabName>('general');
+const activeTab = ref<TabName>('shortcuts');
 const macroIntervalTooltipText = ref<string>("너무 짧게 설정 시 IP 차단 위험 증가 (2초 이상 권장)");
 let debounceTimer: number | null = null;
 
@@ -253,6 +266,37 @@ const updateAltNumberEnabled = async (storageKey: string | undefined, enabled: b
   if (!storageKey) return;
   await settingsStore.saveAltNumberEnabled(enabled);
   UI.showAlert(`ALT + 숫자 즐겨찾기 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
+};
+
+const updateNumberNavigationEnabled = async (
+  storageKey: string | undefined,
+  enabled: boolean,
+  label: string
+): Promise<void> => {
+  if (!storageKey) return;
+  await settingsStore.saveNumberNavigationEnabled(enabled);
+  UI.showAlert(`'${label}' 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
+};
+
+const updateShowDateInListEnabled = async (
+  storageKey: string | undefined,
+  enabled: boolean,
+  label: string
+): Promise<void> => {
+  if (!storageKey) return;
+  await settingsStore.saveShowDateInListEnabled(enabled);
+  UI.showAlert(`'${label}' 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
+};
+
+const updateNumberLabelsEnabled = async (
+  storageKey: string | undefined,
+  enabled: boolean,
+  label: string = '번호 라벨 표시'
+): Promise<void> => {
+  if (!storageKey) return;
+  await settingsStore.saveNumberLabelsEnabled(enabled);
+  Posts.addNumberLabels(enabled);
+  UI.showAlert(`'${label}' 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
 const updateShortcutEnabled = async (storageKey: string | undefined, enabled: boolean, label: string): Promise<void> => {
