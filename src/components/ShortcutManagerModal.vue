@@ -17,7 +17,7 @@
       <div v-show="activeTab === 'shortcuts'" class="tab-pane">
         <div class="shortcut-section">
           <div class="shortcut-section-title">페이지 탐색</div>
-          <ShortcutToggle v-for="action in ['A', 'S', 'GallerySearch', 'GlobalSearch', 'Z', 'X', 'Q', 'E', 'F', 'G', 'R']" :key="action"
+          <ShortcutToggle v-for="action in ['A', 'S', 'Z', 'X', 'Q', 'E', 'GlobalSearch', 'GallerySearch', 'F', 'G', 'R']" :key="action"
             :label="getShortcutLabel(action as ShortcutLabelKey)"
             :enabled="settingsStore.shortcutEnabled[`shortcut${action}Enabled`]"
             :currentKey="settingsStore.shortcutKeys[`shortcut${action}Key`]"
