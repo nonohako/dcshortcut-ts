@@ -217,14 +217,35 @@
       <!-- 데이터 관리 탭 -->
       <div v-show="activeTab === 'data'" class="tab-pane">
         <div class="shortcut-section backup-restore-section">
-          <div class="shortcut-section-title">즐겨찾기 데이터 관리</div>
+          <div class="shortcut-section-title">설정 데이터 관리</div>
           <div class="backup-restore-buttons">
-            <button class="dc-button dc-button-blue" @click="backupFavorites">즐겨찾기 백업</button>
-            <button class="dc-button dc-button-orange" @click="triggerRestoreInput">즐겨찾기 복원</button>
-            <input type="file" id="restore-favorites-input" @change="handleFileRestore" accept=".json"
+            <button class="dc-button dc-button-blue" @click="backupSettings">설정 백업</button>
+            <button class="dc-button dc-button-orange" @click="triggerRestoreInput">설정 복원</button>
+            <input type="file" id="restore-settings-input" @change="handleFileRestore" accept=".json"
               style="display: none;" />
           </div>
-          <p class="backup-restore-note">주의: 복원 시 현재 즐겨찾기 목록을 덮어씁니다.</p>
+        </div>
+        <div class="shortcut-section reset-section">
+          <div class="shortcut-section-title">앱 초기화</div>
+          <button class="dc-button dc-button-red" @click="openResetDialog">초기화</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="isResetDialogVisible" class="reset-dialog-overlay" @click.self="closeResetDialog">
+      <div class="reset-dialog" role="dialog" aria-modal="true" aria-label="앱 초기화 확인">
+        <h4 class="reset-dialog-title">앱 초기화</h4>
+        <p class="reset-dialog-message">
+          앱을 정말 초기화 하시겠습니까? 초기화를 원하면 <strong>초기화</strong>를 입력하세요.
+        </p>
+        <input v-model="resetConfirmInput" class="reset-dialog-input" type="text" autocomplete="off"
+          placeholder="초기화" @keydown.enter.prevent="confirmResetApp" />
+        <div class="reset-dialog-actions">
+          <button class="dc-button dc-button-light" @click="closeResetDialog">취소</button>
+          <button class="dc-button dc-button-red" :disabled="resetConfirmInput.trim() !== RESET_CONFIRM_TEXT"
+            @click="confirmResetApp">
+            초기화
+          </button>
         </div>
       </div>
     </div>
@@ -235,17 +256,20 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick, type Ref, type ComputedRef } from 'vue';
-import { storeToRefs } from 'pinia';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
-import type { FavoriteGalleries, FavoriteProfiles } from '@/stores/favoritesStore';
+import type { FavoriteGalleryInfo, FavoriteGalleries, FavoriteProfiles } from '@/stores/favoritesStore';
 import type { DcconAliasMap, DcconAliasTarget } from '@/types';
 import { useUiStore } from '@/stores/uiStore';
 import UI from '@/services/UI';
 import Posts from '@/services/Posts';
 import Events from '@/services/Events';
 import { normalizeShortcutWithFallback } from '@/services/Shortcut';
-import { DCCON_ALIAS_MAP_KEY } from '@/services/Global';
+import {
+  ACTIVE_FAVORITES_PROFILE_KEY,
+  DCCON_ALIAS_MAP_KEY,
+  FAVORITE_GALLERIES_KEY,
+} from '@/services/Global';
 import Storage from '@/services/Storage';
 import PageNavModeSelector from './PageNavModeSelector.vue';
 import ShortcutToggle from './ShortcutToggle.vue';
@@ -268,13 +292,33 @@ interface DcconAliasListItem extends DcconAliasTarget {
   id: string;
 }
 
+type LocalStorageSnapshot = Record<string, unknown>;
+
+interface SettingsBackupFile {
+  backupType: string;
+  version: number;
+  exportedAt: string;
+  data: LocalStorageSnapshot;
+}
+
+interface RestorePlan {
+  snapshot: LocalStorageSnapshot;
+  migratedFromLegacyFavorites: boolean;
+}
+
+const SETTINGS_BACKUP_FILE_TYPE = 'dcshortcut-settings-backup';
+const SETTINGS_BACKUP_FILE_VERSION = 1;
+const RESET_CONFIRM_TEXT = '초기화';
+const DEFAULT_PROFILE_NAME = '기본';
+const GALLERY_TYPES = new Set<FavoriteGalleryInfo['galleryType']>(['board', 'mgallery', 'mini']);
+const FAVORITES_SLOT_KEY_REGEX = /^[0-9]$/;
+
 // =================================================================
 // Store Initialization and State (스토어 초기화 및 상태)
 // =================================================================
 const uiStore = useUiStore();
 const settingsStore = useSettingsStore();
 const favoritesStore = useFavoritesStore();
-const { profiles } = storeToRefs(favoritesStore);
 
 // =================================================================
 // Component Internal State (컴포넌트 내부 상태)
@@ -283,6 +327,8 @@ const isVisible = ref<boolean>(false);
 const activeTab = ref<TabName>('shortcuts');
 const macroIntervalTooltipText = ref<string>("너무 짧게 설정 시 IP 차단 위험 증가 (2초 이상 권장)");
 const dcconAliasItems = ref<DcconAliasListItem[]>([]);
+const isResetDialogVisible = ref<boolean>(false);
+const resetConfirmInput = ref<string>('');
 let debounceTimer: number | null = null;
 
 // =================================================================
@@ -429,6 +475,180 @@ const storageChangeListener = (
 ): void => {
   if (areaName !== 'local' || !changes[DCCON_ALIAS_MAP_KEY]) return;
   void loadDcconAliasItems();
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const getErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error ? error.message : fallback;
+
+const buildDateString = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = (today.getMonth() + 1).toString().padStart(2, '0');
+  const day = today.getDate().toString().padStart(2, '0');
+  return `${year}${month}${day}`;
+};
+
+const downloadJson = (filename: string, payload: unknown): void => {
+  const jsonData = JSON.stringify(payload, null, 2);
+  const blob = new Blob([jsonData], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+};
+
+const getLocalStorageSnapshot = async (): Promise<LocalStorageSnapshot> =>
+  new Promise((resolve, reject) => {
+    chrome.storage.local.get(null, (items) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      resolve(items as LocalStorageSnapshot);
+    });
+  });
+
+const clearLocalStorage = async (): Promise<void> =>
+  new Promise((resolve, reject) => {
+    chrome.storage.local.clear(() => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      resolve();
+    });
+  });
+
+const setLocalStorageSnapshot = async (snapshot: LocalStorageSnapshot): Promise<void> =>
+  new Promise((resolve, reject) => {
+    chrome.storage.local.set(snapshot, () => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      resolve();
+    });
+  });
+
+const sanitizeSnapshot = (snapshot: LocalStorageSnapshot): LocalStorageSnapshot => {
+  const sanitized: LocalStorageSnapshot = {};
+  Object.entries(snapshot).forEach(([key, value]) => {
+    if (value !== undefined) {
+      sanitized[key] = value;
+    }
+  });
+  return sanitized;
+};
+
+const applyStorageSnapshot = async (snapshot: LocalStorageSnapshot): Promise<void> => {
+  const sanitized = sanitizeSnapshot(snapshot);
+  await clearLocalStorage();
+  if (Object.keys(sanitized).length > 0) {
+    await setLocalStorageSnapshot(sanitized);
+  }
+};
+
+const normalizeFavoriteGallery = (value: unknown): FavoriteGalleryInfo | null => {
+  if (!isRecord(value)) return null;
+  if (typeof value.name !== 'string' || typeof value.galleryId !== 'string') return null;
+  const galleryType = GALLERY_TYPES.has(value.galleryType as FavoriteGalleryInfo['galleryType'])
+    ? (value.galleryType as FavoriteGalleryInfo['galleryType'])
+    : 'board';
+
+  return {
+    name: value.name,
+    galleryId: value.galleryId,
+    galleryType,
+  };
+};
+
+const parseFavoriteGalleries = (value: unknown): FavoriteGalleries | null => {
+  if (!isRecord(value)) return null;
+
+  const parsedGalleries: FavoriteGalleries = {};
+  for (const [slotKey, slotValue] of Object.entries(value)) {
+    if (!FAVORITES_SLOT_KEY_REGEX.test(slotKey)) return null;
+    const gallery = normalizeFavoriteGallery(slotValue);
+    if (!gallery) return null;
+    parsedGalleries[slotKey] = gallery;
+  }
+  return parsedGalleries;
+};
+
+const parseLegacyFavoritesBackup = (value: unknown): FavoriteProfiles | null => {
+  const singleProfile = parseFavoriteGalleries(value);
+  if (singleProfile) {
+    return { [DEFAULT_PROFILE_NAME]: singleProfile };
+  }
+
+  if (!isRecord(value)) return null;
+  const parsedProfiles: FavoriteProfiles = {};
+
+  for (const [profileName, profileValue] of Object.entries(value)) {
+    const parsedProfile = parseFavoriteGalleries(profileValue);
+    if (!parsedProfile) return null;
+    parsedProfiles[profileName] = parsedProfile;
+  }
+
+  return parsedProfiles;
+};
+
+const parseSettingsBackupFile = (value: unknown): SettingsBackupFile | null => {
+  if (!isRecord(value)) return null;
+  if (value.backupType !== SETTINGS_BACKUP_FILE_TYPE) return null;
+  if (typeof value.version !== 'number' || value.version < 1) return null;
+  if (!isRecord(value.data)) return null;
+
+  return {
+    backupType: value.backupType,
+    version: value.version,
+    exportedAt: typeof value.exportedAt === 'string' ? value.exportedAt : '',
+    data: value.data,
+  };
+};
+
+const buildRestorePlan = async (parsedData: unknown): Promise<RestorePlan> => {
+  const settingsBackup = parseSettingsBackupFile(parsedData);
+  if (settingsBackup) {
+    return {
+      snapshot: settingsBackup.data,
+      migratedFromLegacyFavorites: false,
+    };
+  }
+
+  const legacyFavorites = parseLegacyFavoritesBackup(parsedData);
+  if (!legacyFavorites) {
+    throw new Error('지원하지 않는 백업 파일 형식입니다.');
+  }
+
+  const currentSnapshot = await getLocalStorageSnapshot();
+  const nextActiveProfile = Object.keys(legacyFavorites)[0] ?? DEFAULT_PROFILE_NAME;
+
+  return {
+    snapshot: {
+      ...currentSnapshot,
+      [FAVORITE_GALLERIES_KEY]: legacyFavorites,
+      [ACTIVE_FAVORITES_PROFILE_KEY]: nextActiveProfile,
+    },
+    migratedFromLegacyFavorites: true,
+  };
+};
+
+const syncStateAfterStorageMutation = async (): Promise<void> => {
+  await Promise.all([settingsStore.loadSettings(), favoritesStore.loadProfiles()]);
+  await loadDcconAliasItems();
+
+  Posts.addNumberLabels(settingsStore.numberLabelsEnabled);
+  Posts.formatDates(settingsStore.showDateInListEnabled);
+  Events.setPageNavigationMode(settingsStore.pageNavigationMode);
+  window.handleAutoRefresherState?.();
 };
 
 // =================================================================
@@ -717,32 +937,22 @@ const removeDcconAlias = async (item: DcconAliasListItem): Promise<void> => {
 };
 
 const triggerRestoreInput = (): void => {
-  document.getElementById('restore-favorites-input')?.click();
+  document.getElementById('restore-settings-input')?.click();
 };
 
-const backupFavorites = async (): Promise<void> => {
+const backupSettings = async (): Promise<void> => {
   try {
-    const profilesData = profiles.value;
-    if (!profilesData || Object.keys(profilesData).length === 0) {
-      UI.showAlert('백업할 즐겨찾기 데이터가 없습니다.');
-      return;
-    }
-    const jsonData = JSON.stringify(profilesData, null, 2);
-    const blob = new Blob([jsonData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const today = new Date();
-    const dateString = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
-    a.download = `dcinside_favorites_backup_${dateString}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    UI.showAlert('즐겨찾기가 JSON 파일로 백업되었습니다.');
+    const snapshot = await getLocalStorageSnapshot();
+    const backupFile: SettingsBackupFile = {
+      backupType: SETTINGS_BACKUP_FILE_TYPE,
+      version: SETTINGS_BACKUP_FILE_VERSION,
+      exportedAt: new Date().toISOString(),
+      data: snapshot,
+    };
+    downloadJson(`dcinside_settings_backup_${buildDateString()}.json`, backupFile);
   } catch (error) {
-    console.error('즐겨찾기 백업 오류:', error);
-    UI.showAlert('즐겨찾기 백업 중 오류가 발생했습니다.');
+    console.error('설정 백업 오류:', error);
+    UI.showAlert(`설정 백업 실패: ${getErrorMessage(error, '알 수 없는 오류가 발생했습니다.')}`);
   }
 };
 
@@ -757,76 +967,61 @@ const handleFileRestore = async (event: Event): Promise<void> => {
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = async (e: ProgressEvent<FileReader>) => {
-    try {
-      const jsonData = e.target?.result as string;
-      const parsedData = JSON.parse(jsonData);
+  try {
+    const fileText = await file.text();
+    const parsedData = JSON.parse(fileText) as unknown;
+    const restorePlan = await buildRestorePlan(parsedData);
 
-      if (typeof parsedData !== 'object' || parsedData === null) {
-        throw new Error('유효하지 않은 JSON 파일 형식입니다.');
-      }
-
-      let dataToRestore: FavoriteProfiles;
-
-      // --- 백업 파일 형식 감지 및 마이그레이션 로직 ---
-      const keys = Object.keys(parsedData);
-      // 1. 파일 내용의 키가 모두 한 자리 숫자인지 확인하여 구 버전 형식인지 판별
-      const isOldFormat = keys.length > 0 && keys.every(key => /^[0-9]$/.test(key));
-
-      if (isOldFormat) {
-        // 1-1. 구 버전 백업 파일 감지
-        console.warn("구 버전 백업 파일을 감지했습니다. '기본' 프로필로 복원합니다.");
-        // 간단한 유효성 검사
-        for (const key in parsedData) {
-          const item = parsedData[key];
-          if (typeof item?.galleryId !== 'string' || typeof item?.name !== 'string') {
-            throw new Error(`백업 파일의 ${key}번 항목 데이터가 올바르지 않습니다.`);
-          }
-        }
-        // 구 버전 데이터를 '기본' 프로필 아래에 중첩하여 새 형식으로 변환
-        dataToRestore = { '기본': parsedData as FavoriteGalleries };
-      } else {
-        // 1-2. 신 버전(프로필) 형식 백업 파일 유효성 검사
-        for (const profileName in parsedData) {
-          const profile = parsedData[profileName];
-          if (typeof profile !== 'object' || profile === null) {
-            throw new Error(`백업 파일의 '${profileName}' 프로필 데이터 형식이 올바르지 않습니다.`);
-          }
-          for (const key in profile) {
-            const item = profile[key];
-            if (!/^[0-9]$/.test(key) || typeof item?.name !== 'string' || typeof item?.galleryId !== 'string' || !['board', 'mgallery', 'mini'].includes(item?.galleryType)) {
-              throw new Error(`'${profileName}' 프로필의 즐겨찾기 내용(키: ${key})이 올바르지 않습니다.`);
-            }
-          }
-        }
-        dataToRestore = parsedData as FavoriteProfiles;
-      }
-      // --- 마이그레이션 로직 종료 ---
-
-      const confirmed = window.confirm('현재 모든 즐겨찾기 프로필을 선택한 파일의 내용으로 덮어쓰시겠습니까? 이 작업은 되돌릴 수 없습니다.');
-      if (!confirmed) {
-        UI.showAlert('즐겨찾기 복원이 취소되었습니다.');
-        return;
-      }
-
-      await favoritesStore.clearAndSetFavorites(dataToRestore);
-      UI.showAlert('즐겨찾기가 성공적으로 복원되었습니다.');
-
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error('즐겨찾기 복원 중 오류:', error);
-        UI.showAlert(`즐겨찾기 복원 실패: ${error.message}`);
-      }
-    } finally {
-      target.value = '';
+    const confirmMessage = restorePlan.migratedFromLegacyFavorites
+      ? '기존 즐겨찾기 백업 파일을 감지했습니다. 현재 즐겨찾기만 파일 내용으로 덮어씌우고 나머지 설정은 유지합니다. 계속하시겠습니까?'
+      : '현재 설정을 선택한 파일 내용으로 모두 덮어쓰시겠습니까? 이 작업은 되돌릴 수 없습니다.';
+    const confirmed = window.confirm(confirmMessage);
+    if (!confirmed) {
+      UI.showAlert('설정 복원이 취소되었습니다.');
+      return;
     }
-  };
-  reader.onerror = () => {
-    UI.showAlert('파일을 읽는 중 오류가 발생했습니다.');
+
+    await applyStorageSnapshot(restorePlan.snapshot);
+    await syncStateAfterStorageMutation();
+
+    UI.showAlert(
+      restorePlan.migratedFromLegacyFavorites
+        ? '기존 즐겨찾기 백업을 설정 형식으로 마이그레이션해 복원했습니다.'
+        : '설정이 성공적으로 복원되었습니다.'
+    );
+  } catch (error) {
+    console.error('설정 복원 중 오류:', error);
+    UI.showAlert(`설정 복원 실패: ${getErrorMessage(error, '유효하지 않은 JSON 파일입니다.')}`);
+  } finally {
     target.value = '';
-  };
-  reader.readAsText(file);
+  }
+};
+
+const openResetDialog = (): void => {
+  resetConfirmInput.value = '';
+  isResetDialogVisible.value = true;
+};
+
+const closeResetDialog = (): void => {
+  isResetDialogVisible.value = false;
+  resetConfirmInput.value = '';
+};
+
+const confirmResetApp = async (): Promise<void> => {
+  if (resetConfirmInput.value.trim() !== RESET_CONFIRM_TEXT) {
+    UI.showAlert(`초기화를 원하면 '${RESET_CONFIRM_TEXT}'를 입력하세요.`);
+    return;
+  }
+
+  try {
+    await clearLocalStorage();
+    await syncStateAfterStorageMutation();
+    closeResetDialog();
+    UI.showAlert('앱이 기본값으로 초기화되었습니다.');
+  } catch (error) {
+    console.error('앱 초기화 중 오류:', error);
+    UI.showAlert(`초기화 실패: ${getErrorMessage(error, '알 수 없는 오류가 발생했습니다.')}`);
+  }
 };
 
 const closeModal = (): void => uiStore.closeModal();
@@ -865,6 +1060,7 @@ onUnmounted(() => {
   transition: opacity 0.25s ease-out, transform 0.25s ease-out;
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.95);
+  overflow: hidden;
 }
 
 .shortcut-manager:not([style*="display: none;"]) {
@@ -1033,6 +1229,12 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
+.dc-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .close-button-bottom {
   background-color: #6c757d;
   margin-top: 20px;
@@ -1058,6 +1260,22 @@ onUnmounted(() => {
 
 .dc-button-orange:hover {
   background-color: #ffca2c;
+}
+
+.dc-button-red {
+  background-color: #dc3545;
+}
+
+.dc-button-red:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.dc-button-light {
+  background-color: #adb5bd;
+}
+
+.dc-button-light:hover {
+  background-color: #949ea8;
 }
 
 .shortcut-section> :deep(.shortcut-toggle) {
@@ -1304,5 +1522,69 @@ onUnmounted(() => {
 .warning-icon {
   margin-right: 8px;
   font-size: 1rem;
+}
+
+.reset-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.reset-dialog {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.reset-dialog-title {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  color: #212529;
+}
+
+.reset-dialog-message {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  color: #495057;
+  line-height: 1.5;
+}
+
+.reset-dialog-input {
+  width: 50%;
+  min-width: 150px;
+  max-width: 220px;
+  display: block;
+  margin: 0 auto;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  padding: 9px 10px;
+  font-size: 0.9rem;
+  outline: none;
+  text-align: center;
+}
+
+.reset-dialog-input:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2);
+}
+
+.reset-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.reset-dialog-actions .dc-button {
+  margin-top: 0;
 }
 </style>
