@@ -1,8 +1,10 @@
-import { addPrefetchHints } from '@/services/Global';
+import { AS_FULL_LOAD_SCROLL_KEY, addPrefetchHints } from '@/services/Global';
+import type { PageNavigationMode } from '@/types';
 import type Storage from './Storage';
 import type Posts from './Posts';
 import type UI from './UI';
 import type Gallery from './Gallery';
+import { getShortcutComboFromEvent, normalizeShortcutWithFallback } from './Shortcut';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -60,6 +62,10 @@ interface EventsModuleType {
   isPageLoading: boolean;
   _currentTabId: number | null;
   _macroTimeouts: MacroTimeouts;
+  _infiniteScrollEnabled: boolean;
+  _infiniteScrollTicking: boolean;
+  _hasShownInfiniteEndAlert: boolean;
+  _boundInfiniteScrollHandler: (() => void) | null;
   numberInput: NumberInputState;
 
   setup(
@@ -79,6 +85,13 @@ interface EventsModuleType {
   getCurrentTabId(): Promise<number | null>;
   handleStopMacroCommand(macroType: 'Z' | 'X', reason?: string | null): void;
   triggerMacroNavigation(): Promise<void>;
+  setPageNavigationMode(mode: PageNavigationMode): void;
+  enableInfiniteScroll(): void;
+  disableInfiniteScroll(): void;
+  handleInfiniteScroll(): void;
+  isBottomSearchInputFocused(): boolean;
+  checkAndLoadInfiniteScroll(): Promise<void>;
+  loadNextPageContentInfinite(showBoundaryAlert?: boolean): Promise<void>;
   findPaginationLink(direction?: 'prev' | 'next'): HTMLAnchorElement | null;
   fetchPage(url: string): Promise<FetchedPage>;
   cycleProfile(direction?: 'prev' | 'next'): Promise<void>;
@@ -117,6 +130,7 @@ const COMMON_FETCH_HEADERS = {
   'Sec-Fetch-User': '?1',
   'Upgrade-Insecure-Requests': '1',
 };
+const ALT_REQUIRED_ACTIONS = new Set(['SubmitComment', 'SubmitImagePost', 'ToggleModal']);
 
 // =================================================================
 // Events Module (이벤트 모듈)
@@ -136,6 +150,10 @@ const Events: EventsModuleType = {
   isPageLoading: false,
   _currentTabId: null,
   _macroTimeouts: { Z: null, X: null },
+  _infiniteScrollEnabled: false,
+  _infiniteScrollTicking: false,
+  _hasShownInfiniteEndAlert: false,
+  _boundInfiniteScrollHandler: null,
   numberInput: {
     mode: false,
     buffer: '',
@@ -297,6 +315,211 @@ const Events: EventsModuleType = {
       await processMacro('Z');
     } else if (macroState.xRunning && myTabId === macroState.xTabId) {
       await processMacro('X');
+    }
+  },
+
+  setPageNavigationMode(mode: PageNavigationMode): void {
+    if (mode === 'infinite') {
+      this.enableInfiniteScroll();
+      void this.checkAndLoadInfiniteScroll();
+      return;
+    }
+    this.disableInfiniteScroll();
+  },
+
+  enableInfiniteScroll(): void {
+    if (this._infiniteScrollEnabled) return;
+    if (window.location.hostname === 'search.dcinside.com') return;
+    if (!document.querySelector('table.gall_list tbody')) return;
+
+    if (!this._boundInfiniteScrollHandler) {
+      this._boundInfiniteScrollHandler = this.handleInfiniteScroll.bind(this);
+    }
+
+    window.addEventListener('scroll', this._boundInfiniteScrollHandler, { passive: true });
+    window.addEventListener('resize', this._boundInfiniteScrollHandler, { passive: true });
+    this._infiniteScrollEnabled = true;
+    this._hasShownInfiniteEndAlert = false;
+  },
+
+  disableInfiniteScroll(): void {
+    if (this._boundInfiniteScrollHandler) {
+      window.removeEventListener('scroll', this._boundInfiniteScrollHandler);
+      window.removeEventListener('resize', this._boundInfiniteScrollHandler);
+    }
+    this._infiniteScrollEnabled = false;
+    this._infiniteScrollTicking = false;
+    this._hasShownInfiniteEndAlert = false;
+  },
+
+  handleInfiniteScroll(): void {
+    if (!this._infiniteScrollEnabled || this.isPageLoading || this._infiniteScrollTicking) return;
+
+    this._infiniteScrollTicking = true;
+    requestAnimationFrame(() => {
+      this._infiniteScrollTicking = false;
+      void this.checkAndLoadInfiniteScroll();
+    });
+  },
+
+  isBottomSearchInputFocused(): boolean {
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLElement)) return false;
+    if (!activeElement.matches('input, textarea')) return false;
+    return !!activeElement.closest('.bottom_search');
+  },
+
+  async checkAndLoadInfiniteScroll(): Promise<void> {
+    if (!this._infiniteScrollEnabled || this.isPageLoading) return;
+    if (this.isBottomSearchInputFocused()) return;
+
+    const scrollElement = document.scrollingElement ?? document.documentElement;
+    const distanceFromBottom =
+      scrollElement.scrollHeight - (scrollElement.scrollTop + window.innerHeight);
+    const thresholdPx = 320;
+
+    if (distanceFromBottom > thresholdPx) return;
+    await this.loadNextPageContentInfinite();
+  },
+
+  async loadNextPageContentInfinite(showBoundaryAlert: boolean = false): Promise<void> {
+    if (this.isPageLoading) return;
+
+    const nextPageLinkElement = this.findPaginationLink('next');
+    if (!nextPageLinkElement?.href) {
+      if (showBoundaryAlert || !this._hasShownInfiniteEndAlert) {
+        this.ui?.showAlert('마지막 페이지입니다.');
+      }
+      this._hasShownInfiniteEndAlert = true;
+      return;
+    }
+
+    if (!this.ui || !this.posts) {
+      window.location.href = nextPageLinkElement.href;
+      return;
+    }
+
+    const targetLinkUrl = nextPageLinkElement.href;
+    this._hasShownInfiniteEndAlert = false;
+    this.isPageLoading = true;
+    window.AutoRefresher?.stop();
+    this.ui.showAlert('다음 페이지 불러오는 중...');
+    let loaded = false;
+
+    try {
+      const { doc } = await this.fetchPage(targetLinkUrl);
+      const currentTable = document.querySelector<HTMLTableElement>('table.gall_list');
+      const newTable = doc.querySelector<HTMLTableElement>('table.gall_list');
+      const currentTbodies =
+        currentTable?.querySelectorAll('tbody') ?? document.querySelectorAll('table.gall_list tbody');
+      const newTbodies =
+        newTable?.querySelectorAll('tbody') ?? doc.querySelectorAll('table.gall_list tbody');
+
+      if (!currentTable || currentTbodies.length === 0 || newTbodies.length === 0) {
+        throw new Error('무한 스크롤 대상 테이블을 찾지 못했습니다.');
+      }
+
+      const hasCheckboxCurrent = !!currentTable.querySelector('td.gall_chk, th.gall_chk');
+      const hasCheckboxNew = !!newTable?.querySelector('td.gall_chk, th.gall_chk');
+      const shouldInjectCheckboxCell = hasCheckboxCurrent && !hasCheckboxNew;
+
+      const createCheckboxCell = (): HTMLTableCellElement => {
+        const checkboxTd = document.createElement('td');
+        checkboxTd.className = 'gall_chk';
+        const span = document.createElement('span');
+        span.className = 'checkbox';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.name = 'chk_article[]';
+        input.className = 'list_chkbox article_chkbox';
+        const em = document.createElement('em');
+        em.className = 'checkmark';
+        const label = document.createElement('label');
+        label.className = 'blind';
+        label.textContent = '글 선택';
+        span.appendChild(input);
+        span.appendChild(em);
+        span.appendChild(label);
+        checkboxTd.appendChild(span);
+        return checkboxTd;
+      };
+
+      const ensureCheckboxCell = (row: HTMLTableRowElement): void => {
+        if (!shouldInjectCheckboxCell) return;
+        const hasNumCell = !!row.querySelector('td.gall_num');
+        const hasCheckbox = !!row.querySelector('td.gall_chk');
+        if (hasNumCell && !hasCheckbox) {
+          row.insertBefore(createCheckboxCell(), row.firstChild);
+        }
+      };
+
+      newTbodies.forEach((newTbody, index) => {
+        const targetTbody = currentTbodies[index];
+        if (targetTbody) {
+          const fragment = document.createDocumentFragment();
+          newTbody.querySelectorAll<HTMLTableRowElement>('tr').forEach((newRow) => {
+            const clonedRow = newRow.cloneNode(true) as HTMLTableRowElement;
+            ensureCheckboxCell(clonedRow);
+            fragment.appendChild(clonedRow);
+          });
+          targetTbody.appendChild(fragment);
+          return;
+        }
+
+        const clonedTbody = newTbody.cloneNode(true) as HTMLTableSectionElement;
+        if (shouldInjectCheckboxCell) {
+          clonedTbody.querySelectorAll<HTMLTableRowElement>('tr').forEach(ensureCheckboxCell);
+        }
+        currentTable.appendChild(clonedTbody);
+      });
+
+      const getPagingWrap = (root: Document | Element): Element | null => {
+        const exceptionWrap = root.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre');
+        if (exceptionWrap) return exceptionWrap;
+
+        const normalWraps = root.querySelectorAll('.bottom_paging_wrap');
+        if (normalWraps.length > 1) return normalWraps[1];
+        return normalWraps[0] ?? null;
+      };
+
+      const currentPagingWrap = getPagingWrap(document);
+      const newPagingWrap = getPagingWrap(doc);
+      if (currentPagingWrap) {
+        currentPagingWrap.innerHTML = newPagingWrap ? newPagingWrap.innerHTML : '';
+      }
+
+      this.posts.adjustColgroupWidths();
+      this.posts.addNumberLabels(this.settingsStore?.numberLabelsEnabled ?? true);
+      this.posts.formatDates(this.settingsStore?.showDateInListEnabled ?? true);
+      addPrefetchHints();
+
+      try {
+        const targetUrlObj = new URL(targetLinkUrl);
+        const currentUrl = new URL(window.location.href);
+        ['page', 'search_pos', 's_type', 's_keyword', 'exception_mode'].forEach((param) => {
+          const value = targetUrlObj.searchParams.get(param);
+          if (value) {
+            currentUrl.searchParams.set(param, value);
+          } else {
+            currentUrl.searchParams.delete(param);
+          }
+        });
+        history.replaceState(null, '', currentUrl.toString());
+      } catch (urlError) {
+        console.error('Error updating URL after infinite scroll:', urlError);
+      }
+
+      window.handleAutoRefresherState?.();
+      loaded = true;
+    } catch (error) {
+      console.error('[InfiniteScroll] 페이지 로딩 실패:', error);
+      this.ui.showAlert('무한 스크롤 로딩 중 오류가 발생했습니다.');
+    } finally {
+      this.isPageLoading = false;
+      this.ui.removeAlert('다음 페이지 불러오는 중...');
+      if (loaded && this._infiniteScrollEnabled) {
+        this.handleInfiniteScroll();
+      }
     }
   },
 
@@ -1044,25 +1267,11 @@ const Events: EventsModuleType = {
     }
   },
 
-  async handleShortcuts(key, event) {
+  async handleShortcuts(actionForPressedKey, event) {
     if (!this.settingsStore || !this.ui || !this.posts || !this.gallery) return;
 
-    const isViewMode = window.location.pathname.includes('/board/view/');
     const baseListUrl = this.gallery.getBaseListUrl();
     const recommendListUrl = this.gallery.getRecommendListUrl();
-
-    let actionForPressedKey: string | null = null;
-    for (const action in this.settingsStore.defaultShortcutKeys) {
-      const assignedKey =
-        this.settingsStore.shortcutKeys[`shortcut${action}Key`] ||
-        this.settingsStore.defaultShortcutKeys[
-          action as keyof typeof this.settingsStore.defaultShortcutKeys
-        ];
-      if (assignedKey.toUpperCase() === key.toUpperCase()) {
-        actionForPressedKey = action;
-        break;
-      }
-    }
 
     if (
       window.location.hostname === 'search.dcinside.com' &&
@@ -1128,17 +1337,49 @@ const Events: EventsModuleType = {
       case 'A':
       case 'S': {
         const direction = actionForPressedKey === 'A' ? 'prev' : 'next';
+        const mode = this.settingsStore.pageNavigationMode;
         const targetLinkElement = this.findPaginationLink(direction);
-        if (targetLinkElement) {
-          if (this.settingsStore.pageNavigationMode === 'ajax') {
-            await this.loadPageContentAjax(targetLinkElement.href);
-          } else {
-            sessionStorage.setItem('dcinside_navigated_by_as_full_load', 'true');
-            window.location.href = targetLinkElement.href;
-          }
-        } else {
-          this.ui.showAlert(direction === 'prev' ? '첫 페이지입니다.' : '마지막 페이지입니다.');
+
+        if (mode === 'infinite' && direction === 'next') {
+          await this.loadNextPageContentInfinite(true);
+          break;
         }
+
+        if (!targetLinkElement) {
+          this.ui.showAlert(direction === 'prev' ? '첫 페이지입니다.' : '마지막 페이지입니다.');
+          break;
+        }
+
+        if (mode === 'ajax') {
+          await this.loadPageContentAjax(targetLinkElement.href);
+        } else {
+          sessionStorage.setItem(AS_FULL_LOAD_SCROLL_KEY, 'true');
+          window.location.href = targetLinkElement.href;
+        }
+        break;
+      }
+      case 'GallerySearch': {
+        const gallerySearchInput = document.querySelector<HTMLInputElement>(
+          '.bottom_search .in_keyword[name="search_keyword"], .bottom_search .in_keyword'
+        );
+        if (!gallerySearchInput) {
+          this.ui.showAlert('갤러리 내부 검색창을 찾을 수 없습니다.');
+          break;
+        }
+        gallerySearchInput.focus();
+        gallerySearchInput.select();
+        break;
+      }
+      case 'GlobalSearch': {
+        const globalSearchInput = document.querySelector<HTMLInputElement>(
+          '#preSWord, .top_search .in_keyword[name="search"]'
+        );
+        if (!globalSearchInput) {
+          this.ui.showAlert('통합 검색창을 찾을 수 없습니다.');
+          break;
+        }
+        globalSearchInput.focus();
+        globalSearchInput.select();
         break;
       }
       case 'Z':
@@ -1152,6 +1393,17 @@ const Events: EventsModuleType = {
         break;
       case 'NextProfile':
         await this.cycleProfile('next');
+        break;
+      case 'SubmitComment':
+        document.querySelector<HTMLButtonElement>('button.btn_svc.repley_add')?.click();
+        break;
+      case 'SubmitImagePost':
+        document.querySelector<HTMLButtonElement>('button.btn_svc.write[type="image"]')?.click();
+        break;
+      case 'ToggleModal':
+        this.uiStore?.activeModal === 'shortcuts'
+          ? this.uiStore.closeModal()
+          : this.uiStore?.toggleFavorites();
         break;
     }
   },
@@ -1176,133 +1428,130 @@ const Events: EventsModuleType = {
       }
     }
 
-    if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
-      const keyUpper = event.key.toUpperCase();
-      const keys = this.settingsStore.shortcutKeys;
-      const defaults = this.settingsStore.defaultShortcutKeys;
+    const activeEl = document.activeElement;
+    const isTypingContext =
+      !!activeEl &&
+      (activeEl.tagName === 'TEXTAREA' ||
+        activeEl.tagName === 'INPUT' ||
+        (activeEl as HTMLElement).isContentEditable);
 
-      // 1. 먼저 어떤 동작에 해당하는 키인지 확인합니다.
+    const pressedCombo = getShortcutComboFromEvent(event);
+    if (pressedCombo) {
       let targetAction: string | null = null;
-      const prevProfileKey = (keys.shortcutPrevProfileKey || defaults.PrevProfile).toUpperCase();
-      const nextProfileKey = (keys.shortcutNextProfileKey || defaults.NextProfile).toUpperCase();
-      const submitCommentKey = (
-        keys.shortcutSubmitCommentKey || defaults.SubmitComment
-      ).toUpperCase();
-      const submitImagePostKey = (
-        keys.shortcutSubmitImagePostKey || defaults.SubmitImagePost
-      ).toUpperCase();
-      const toggleModalKey = (keys.shortcutToggleModalKey || defaults.ToggleModal).toUpperCase();
 
-      if (keyUpper === prevProfileKey) {
-        targetAction = 'PrevProfile';
-      } else if (keyUpper === nextProfileKey) {
-        targetAction = 'NextProfile';
-      } else if (event.key >= '0' && event.key <= '9' && this.settingsStore.altNumberEnabled) {
-        targetAction = 'FavoriteNumber';
-      } else if (
-        keyUpper === submitCommentKey &&
-        this.settingsStore.shortcutSubmitCommentKeyEnabled
-      ) {
-        targetAction = 'SubmitComment';
-      } else if (
-        keyUpper === submitImagePostKey &&
-        this.settingsStore.shortcutSubmitImagePostKeyEnabled
-      ) {
-        targetAction = 'SubmitImagePost';
-      } else if (keyUpper === toggleModalKey && this.settingsStore.shortcutToggleModalKeyEnabled) {
-        targetAction = 'ToggleModal';
-      }
-
-      // 2. 스크립트가 처리해야 할 단축키(targetAction이 확인된 경우)에만 기본 동작을 막습니다.
-      if (targetAction) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        // 3. 확인된 동작을 실행합니다.
-        switch (targetAction) {
-          case 'PrevProfile':
-            if (this.settingsStore.favoritesPreviewEnabled && this._isAltPressed) {
-              await this.cycleProfile('prev');
-            }
-            break;
-          case 'NextProfile':
-            if (this.settingsStore.favoritesPreviewEnabled && this._isAltPressed) {
-              await this.cycleProfile('next');
-            }
-            break;
-          case 'FavoriteNumber':
-            await this.gallery.handleFavoriteKey(event.key, this.favoritesStore);
-            break;
-          case 'SubmitComment':
-            document.querySelector<HTMLButtonElement>('button.btn_svc.repley_add')?.click();
-            break;
-          case 'SubmitImagePost':
-            document
-              .querySelector<HTMLButtonElement>('button.btn_svc.write[type="image"]')
-              ?.click();
-            break;
-          case 'ToggleModal':
-            this.uiStore.activeModal === 'shortcuts'
-              ? this.uiStore.closeModal()
-              : this.uiStore.toggleFavorites();
-            break;
-        }
-      }
-      return;
-    }
-
-    if (!event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
-      const activeEl = document.activeElement;
-      if (
-        activeEl &&
-        (activeEl.tagName === 'TEXTAREA' ||
-          activeEl.tagName === 'INPUT' ||
-          (activeEl as HTMLElement).isContentEditable)
-      ) {
-        return;
-      }
-
-      if (this.numberInput.mode) {
-        this.handleNumberInput(event);
-        return;
-      }
-      if (event.key === '.' || event.key === '`') {
-        this.toggleNumberInput(event.key);
-        return;
-      }
-
-      const keyUpper = event.key.toUpperCase();
-      let targetAction: string | null = null;
       for (const action of this.settingsStore.customizableShortcutActions) {
-        if (['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(action)) continue;
-        const assignedKey = (
-          this.settingsStore.shortcutKeys[`shortcut${action}Key`] ||
+        const assignedCombo = normalizeShortcutWithFallback(
+          this.settingsStore.shortcutKeys[`shortcut${action}Key`],
           this.settingsStore.defaultShortcutKeys[
             action as keyof typeof this.settingsStore.defaultShortcutKeys
-          ]
-        ).toUpperCase();
-        if (assignedKey === keyUpper) {
+          ],
+          ALT_REQUIRED_ACTIONS.has(action)
+        );
+        if (assignedCombo === pressedCombo) {
           targetAction = action;
           break;
         }
       }
 
       if (targetAction) {
-        if (this.settingsStore.shortcutEnabled[`shortcut${targetAction}Enabled`]) {
+        const isEnabled =
+          targetAction === 'SubmitComment'
+            ? this.settingsStore.shortcutSubmitCommentKeyEnabled
+            : targetAction === 'SubmitImagePost'
+              ? this.settingsStore.shortcutSubmitImagePostKeyEnabled
+              : targetAction === 'ToggleModal'
+                ? this.settingsStore.shortcutToggleModalKeyEnabled
+                : this.settingsStore.shortcutEnabled[`shortcut${targetAction}Enabled`];
+
+        if (isEnabled) {
+          // 입력 중에는 단일 키 단축키를 막아 타이핑과 충돌하지 않도록 합니다.
+          if (
+            isTypingContext &&
+            !event.altKey &&
+            !event.ctrlKey &&
+            !event.shiftKey &&
+            !event.metaKey
+          ) {
+            return;
+          }
+
           event.preventDefault();
           event.stopPropagation();
-          await this.handleShortcuts(keyUpper, event);
+          await this.handleShortcuts(targetAction, event);
         }
         return;
       }
+    }
 
-      if (event.key >= '0' && event.key <= '9' && this.settingsStore.numberNavigationEnabled) {
-        const { validPosts } = this.posts.getValidPosts();
-        const index = event.key === '0' ? 9 : parseInt(event.key, 10) - 1;
-        if (validPosts?.[index]?.link) {
-          event.preventDefault();
-          validPosts[index].link.click();
-        }
+    // 레거시 호환: Alt 미리보기 중에는 Prev/NextProfile의 "기본 키"도 동작시킵니다.
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      this.settingsStore.favoritesPreviewEnabled &&
+      this._isAltPressed
+    ) {
+      const prevProfileCombo = normalizeShortcutWithFallback(
+        this.settingsStore.shortcutKeys.shortcutPrevProfileKey,
+        this.settingsStore.defaultShortcutKeys.PrevProfile
+      );
+      const nextProfileCombo = normalizeShortcutWithFallback(
+        this.settingsStore.shortcutKeys.shortcutNextProfileKey,
+        this.settingsStore.defaultShortcutKeys.NextProfile
+      );
+      const rawKeyUpper = event.key.toUpperCase();
+
+      if (!prevProfileCombo.includes('+') && prevProfileCombo.toUpperCase() === rawKeyUpper) {
+        event.preventDefault();
+        event.stopPropagation();
+        await this.cycleProfile('prev');
+        return;
+      }
+      if (!nextProfileCombo.includes('+') && nextProfileCombo.toUpperCase() === rawKeyUpper) {
+        event.preventDefault();
+        event.stopPropagation();
+        await this.cycleProfile('next');
+        return;
+      }
+    }
+
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      event.key >= '0' &&
+      event.key <= '9' &&
+      this.settingsStore.altNumberEnabled
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      await this.gallery.handleFavoriteKey(event.key, this.favoritesStore);
+      return;
+    }
+
+    if (event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) {
+      return;
+    }
+
+    if (isTypingContext) return;
+
+    if (this.numberInput.mode) {
+      this.handleNumberInput(event);
+      return;
+    }
+    if (event.key === '.' || event.key === '`') {
+      this.toggleNumberInput(event.key);
+      return;
+    }
+
+    if (event.key >= '0' && event.key <= '9' && this.settingsStore.numberNavigationEnabled) {
+      const { validPosts } = this.posts.getValidPosts();
+      const index = event.key === '0' ? 9 : parseInt(event.key, 10) - 1;
+      if (validPosts?.[index]?.link) {
+        event.preventDefault();
+        validPosts[index].link.click();
       }
     }
   },

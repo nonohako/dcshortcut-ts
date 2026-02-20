@@ -5,12 +5,11 @@
     <!-- 탭 네비게이션 -->
     <div class="tabs">
       <button class="tab-button" :class="{ active: activeTab === 'shortcuts' }" @click="activeTab = 'shortcuts'">단축키</button>
-      <button class="tab-button" :class="{ active: activeTab === 'advanced' }" @click="activeTab = 'advanced'">고급
-        기능</button>
-      <button class="tab-button" :class="{ active: activeTab === 'refresh' }" @click="activeTab = 'refresh'">자동
-        새로고침</button>
+      <button class="tab-button" :class="{ active: activeTab === 'advanced' }" @click="activeTab = 'advanced'">고급</button>
+      <button class="tab-button" :class="{ active: activeTab === 'dccon' }" @click="activeTab = 'dccon'">디시콘</button>
+      <button class="tab-button" :class="{ active: activeTab === 'refresh' }" @click="activeTab = 'refresh'">새로고침</button>
       <button class="tab-button" :class="{ active: activeTab === 'macros' }" @click="activeTab = 'macros'">매크로</button>
-      <button class="tab-button" :class="{ active: activeTab === 'data' }" @click="activeTab = 'data'">데이터 관리</button>
+      <button class="tab-button" :class="{ active: activeTab === 'data' }" @click="activeTab = 'data'">데이터</button>
     </div>
 
     <div class="tab-content">
@@ -18,7 +17,7 @@
       <div v-show="activeTab === 'shortcuts'" class="tab-pane">
         <div class="shortcut-section">
           <div class="shortcut-section-title">페이지 탐색</div>
-          <ShortcutToggle v-for="action in ['A', 'S', 'Z', 'X', 'Q', 'E', 'F', 'G', 'R']" :key="action"
+          <ShortcutToggle v-for="action in ['A', 'S', 'GallerySearch', 'GlobalSearch', 'Z', 'X', 'Q', 'E', 'F', 'G', 'R']" :key="action"
             :label="getShortcutLabel(action as ShortcutLabelKey)"
             :enabled="settingsStore.shortcutEnabled[`shortcut${action}Enabled`]"
             :currentKey="settingsStore.shortcutKeys[`shortcut${action}Key`]"
@@ -43,7 +42,7 @@
         </div>
 
         <div class="shortcut-section">
-          <div class="shortcut-section-title">등록 (Alt 고정)</div>
+          <div class="shortcut-section-title">등록 (Alt 필수)</div>
           <ShortcutToggle :label="getShortcutLabel('SubmitImagePost')"
             :enabled="settingsStore.shortcutSubmitImagePostKeyEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutSubmitImagePostKey"
@@ -111,14 +110,60 @@
         </div>
       </div>
 
+      <!-- 디시콘 별칭 탭 -->
+      <div v-show="activeTab === 'dccon'" class="tab-pane">
+        <div class="shortcut-section">
+          <div class="shortcut-section-title">디시콘 별칭</div>
+          <p class="shortcut-section-note">
+            댓글창 디시콘 아이콘 <strong>우클릭</strong> → 별칭 등록.<br>
+            댓글에 <strong>@별칭</strong> 입력 시 목록 표시 (TAB/Shift+TAB 전환, ENTER/클릭 선택)
+          </p>
+          <div class="dccon-toolbar">
+            <button class="dc-button dc-button-blue alias-refresh-button" @click="loadDcconAliasItems">
+              목록 새로고침
+            </button>
+            <div class="dccon-enabled-toggle" title="디시콘 별칭 기능 ON/OFF">
+              <span class="dccon-enabled-label">디시콘</span>
+              <label class="dccon-switch">
+                <input type="checkbox" :checked="settingsStore.dcconAliasEnabled" @change="updateDcconAliasEnabled" />
+                <span class="dccon-switch-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div v-if="dcconAliasItems.length === 0" class="alias-empty-state">
+            등록된 디시콘 별칭이 없습니다.
+          </div>
+          <ul v-else class="alias-list">
+            <li v-for="item in dcconAliasItems" :key="item.id" class="alias-list-item">
+              <div class="alias-item-main">
+                <img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.alias" :title="item.aliasTooltip" loading="lazy" />
+                <span class="alias-item-aliases" :title="item.aliasTooltip">
+                  {{ item.aliases.map((alias) => `@${alias}`).join(', ') }}
+                </span>
+              </div>
+              <div class="alias-item-actions">
+                <button class="alias-action-button alias-edit-button" title="별칭 수정" @click="editDcconAlias(item)">
+                  ✎
+                </button>
+                <button class="alias-action-button alias-delete-button" @click="removeDcconAlias(item)">삭제</button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
       <!-- 자동 새로고침 탭 -->
       <div v-show="activeTab === 'refresh'" class="tab-pane">
         <div class="shortcut-section">
           <div class="shortcut-section-title">새로운 글 자동 새로고침</div>
-          <p class="shortcut-section-note">가장 마지막으로 포커스된 탭의 글 목록을 자동으로 갱신합니다.</p>
           <ShortcutToggle label="자동 새로고침 활성화" :enabled="settingsStore.autoRefreshEnabled"
             storageKeyEnabled="autoRefreshEnabled" @update:enabled="updateAutoRefreshEnabled" :isKeyEditable="false" />
-          <ShortcutToggle v-if="settingsStore.autoRefreshEnabled" label="비활성 탭에서 새로고침 일시중지"
+          <ShortcutToggle v-if="settingsStore.autoRefreshEnabled" label="모든 탭에서 글 목록 갱신"
+            tooltipText="ON이면 열린 DC 탭 모두에서 글 목록 자동 갱신이 동작합니다." :enabled="settingsStore.autoRefreshAllTabsEnabled"
+            storageKeyEnabled="autoRefreshAllTabsEnabled" @update:enabled="updateAutoRefreshAllTabsEnabled"
+            :isKeyEditable="false" />
+          <ShortcutToggle v-if="settingsStore.autoRefreshEnabled && !settingsStore.autoRefreshAllTabsEnabled"
+            label="비활성 탭에서 새로고침 일시중지"
             tooltipText="다른 탭을 보거나 브라우저를 최소화하면 새로고침을 멈춰 리소스를 절약합니다." :enabled="settingsStore.pauseOnInactiveEnabled"
             storageKeyEnabled="pauseOnInactiveEnabled" @update:enabled="updatePauseOnInactiveEnabled"
             :isKeyEditable="false" />
@@ -128,6 +173,20 @@
               :value="settingsStore.autoRefreshInterval" @input="updateAutoRefreshIntervalDebounced" min="1"
               step="0.5" />
           </div>
+          <div class="shortcut-interval-setting" v-if="settingsStore.autoRefreshEnabled">
+            <label for="auto-refresh-highlight-color" class="interval-label">새 글 하이라이트 색상</label>
+            <input type="color" id="auto-refresh-highlight-color" class="color-input"
+              :value="settingsStore.autoRefreshHighlightColor" @input="updateAutoRefreshHighlightColor" />
+          </div>
+          <div class="shortcut-interval-setting" v-if="settingsStore.autoRefreshEnabled">
+            <label for="auto-refresh-highlight-duration" class="interval-label">하이라이트 유지 시간 (초)</label>
+            <input type="number" id="auto-refresh-highlight-duration" class="interval-input"
+              :value="settingsStore.autoRefreshHighlightDuration" @input="updateAutoRefreshHighlightDurationDebounced"
+              min="-1" step="0.5" />
+          </div>
+          <p v-if="settingsStore.autoRefreshEnabled" class="shortcut-section-note">
+            하이라이트 시간: 0은 끄기, -1은 무한 유지
+          </p>
           <p v-if="settingsStore.autoRefreshEnabled && settingsStore.autoRefreshInterval < 5" class="warning-note">
             <span class="warning-icon">⚠️</span> 5초 미만의 간격은 IP 차단 위험이 매우 높습니다.
           </p>
@@ -175,14 +234,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick, type Ref, type ComputedRef } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, type Ref, type ComputedRef } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import type { FavoriteGalleries, FavoriteProfiles } from '@/stores/favoritesStore';
+import type { DcconAliasMap, DcconAliasTarget } from '@/types';
 import { useUiStore } from '@/stores/uiStore';
 import UI from '@/services/UI';
 import Posts from '@/services/Posts';
+import Events from '@/services/Events';
+import { normalizeShortcutWithFallback } from '@/services/Shortcut';
+import { DCCON_ALIAS_MAP_KEY } from '@/services/Global';
+import Storage from '@/services/Storage';
 import PageNavModeSelector from './PageNavModeSelector.vue';
 import ShortcutToggle from './ShortcutToggle.vue';
 import FootnoteTrigger from './FootnoteTrigger.vue';
@@ -191,11 +255,18 @@ import FootnoteTrigger from './FootnoteTrigger.vue';
 // Type Definitions (타입 정의)
 // =================================================================
 
-type TabName = 'shortcuts' | 'advanced' | 'refresh' | 'macros' | 'data';
+type TabName = 'shortcuts' | 'advanced' | 'dccon' | 'refresh' | 'macros' | 'data';
 
-type ShortcutLabelKey = 'W' | 'C' | 'D' | 'R' | 'Q' | 'E' | 'F' | 'G' | 'A' | 'S' | 'Z' | 'X' |
+type ShortcutLabelKey = 'W' | 'C' | 'D' | 'R' | 'Q' | 'E' | 'F' | 'G' | 'A' | 'S' | 'GallerySearch' | 'GlobalSearch' | 'Z' | 'X' |
   'PrevProfile' | 'NextProfile' | 'SubmitImagePost' | 'SubmitComment' |
   'ToggleModal' | 'DRefresh' | 'MacroZ' | 'MacroX';
+const ALT_REQUIRED_ACTIONS = new Set(['SubmitComment', 'SubmitImagePost', 'ToggleModal']);
+
+interface DcconAliasListItem extends DcconAliasTarget {
+  aliases: string[];
+  aliasTooltip: string;
+  id: string;
+}
 
 // =================================================================
 // Store Initialization and State (스토어 초기화 및 상태)
@@ -211,6 +282,7 @@ const { profiles } = storeToRefs(favoritesStore);
 const isVisible = ref<boolean>(false);
 const activeTab = ref<TabName>('shortcuts');
 const macroIntervalTooltipText = ref<string>("너무 짧게 설정 시 IP 차단 위험 증가 (2초 이상 권장)");
+const dcconAliasItems = ref<DcconAliasListItem[]>([]);
 let debounceTimer: number | null = null;
 
 // =================================================================
@@ -220,7 +292,12 @@ let debounceTimer: number | null = null;
 const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(() => {
   const keys = settingsStore.shortcutKeys;
   const defaults = settingsStore.defaultShortcutKeys;
-  const getKey = (action: string) => (keys[`shortcut${action}Key`] || defaults[action as keyof typeof defaults] || '').toUpperCase();
+  const getKey = (action: string) =>
+    normalizeShortcutWithFallback(
+      keys[`shortcut${action}Key`],
+      defaults[action as keyof typeof defaults] || '',
+      ALT_REQUIRED_ACTIONS.has(action)
+    );
 
   return {
     W: `${getKey('W')} - 글쓰기`,
@@ -233,13 +310,15 @@ const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(()
     G: `${getKey('G')} - 개념글 보기`,
     A: `${getKey('A')} - 다음 페이지`,
     S: `${getKey('S')} - 이전 페이지`,
+    GallerySearch: `${getKey('GallerySearch')} - 갤러리 내부 검색`,
+    GlobalSearch: `${getKey('GlobalSearch')} - 통합 검색`,
     Z: `${getKey('Z')} - 다음 글`,
     X: `${getKey('X')} - 이전 글`,
     PrevProfile: `${getKey('PrevProfile')} - 이전 프로필`,
     NextProfile: `${getKey('NextProfile')} - 다음 프로필`,
-    SubmitImagePost: `Alt + ${getKey('SubmitImagePost')} - 글 등록`,
-    SubmitComment: `Alt + ${getKey('SubmitComment')} - 댓글 등록`,
-    ToggleModal: `Alt + ${getKey('ToggleModal')} - 즐겨찾기창 열기`,
+    SubmitImagePost: `${getKey('SubmitImagePost')} - 글 등록`,
+    SubmitComment: `${getKey('SubmitComment')} - 댓글 등록`,
+    ToggleModal: `${getKey('ToggleModal')} - 즐겨찾기창 열기`,
     DRefresh: `D - 댓글 이동 시 댓글 새로고침`,
     MacroZ: `Alt + Z - 다음 글 자동 넘김`,
     MacroX: `Alt + X - 이전 글 자동 넘김`,
@@ -247,6 +326,110 @@ const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(()
 });
 
 const getShortcutLabel = (action: ShortcutLabelKey): string => dynamicLabels.value[action] || action;
+
+const normalizeAliasKey = (alias: string): string => alias.trim().toLocaleLowerCase();
+const sanitizeSingleAliasInput = (rawAlias: string): string => {
+  const alias = rawAlias.replace(/^@+/, '').trim();
+  if (!alias || /\s/.test(alias)) return '';
+  return alias.slice(0, 5);
+};
+const parseAliasListInput = (rawInput: string): string[] => {
+  const aliases: string[] = [];
+  const seen = new Set<string>();
+
+  rawInput.split(',').forEach((token) => {
+    const alias = sanitizeSingleAliasInput(token);
+    if (!alias) return;
+
+    const normalized = normalizeAliasKey(alias);
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    aliases.push(alias);
+  });
+
+  return aliases;
+};
+const getAliasSortBucket = (alias: string): number => {
+  const firstChar = alias.trim().charAt(0);
+  if (!firstChar) return 9;
+  if (/^[0-9]$/.test(firstChar)) return 0;
+  if (/^[A-Za-z]$/.test(firstChar)) return 1;
+  if (/^[ㄱ-ㅎㅏ-ㅣ가-힣]$/.test(firstChar)) return 2;
+  return 3;
+};
+const compareAliasItems = (a: DcconAliasListItem, b: DcconAliasListItem): number => {
+  const bucketDiff = getAliasSortBucket(a.alias) - getAliasSortBucket(b.alias);
+  if (bucketDiff !== 0) return bucketDiff;
+
+  const aliasCompare = a.alias.localeCompare(b.alias, 'ko', {
+    sensitivity: 'base',
+    numeric: true,
+  });
+  if (aliasCompare !== 0) return aliasCompare;
+
+  const packageCompare = a.packageIdx.localeCompare(b.packageIdx, 'en', { numeric: true });
+  if (packageCompare !== 0) return packageCompare;
+  return a.detailIdx.localeCompare(b.detailIdx, 'en', { numeric: true });
+};
+
+const removeAliasTargetFromMap = (
+  aliasMap: DcconAliasMap,
+  packageIdx: string,
+  detailIdx: string
+): void => {
+  Object.keys(aliasMap).forEach((aliasKey) => {
+    const filteredTargets = aliasMap[aliasKey].filter(
+      (target) => !(target.packageIdx === packageIdx && target.detailIdx === detailIdx)
+    );
+    if (filteredTargets.length > 0) {
+      aliasMap[aliasKey] = filteredTargets;
+    } else {
+      delete aliasMap[aliasKey];
+    }
+  });
+};
+
+const setAliasesForTarget = (
+  aliasMap: DcconAliasMap,
+  target: Pick<DcconAliasTarget, 'packageIdx' | 'detailIdx' | 'title' | 'imageUrl'>,
+  aliases: string[]
+): void => {
+  removeAliasTargetFromMap(aliasMap, target.packageIdx, target.detailIdx);
+
+  const baseTime = Date.now();
+  aliases.forEach((alias, index) => {
+    const normalized = normalizeAliasKey(alias);
+    if (!normalized) return;
+
+    const nextTarget: DcconAliasTarget = {
+      alias,
+      packageIdx: target.packageIdx,
+      detailIdx: target.detailIdx,
+      title: target.title,
+      imageUrl: target.imageUrl,
+      updatedAt: baseTime + index,
+    };
+
+    const targets = aliasMap[normalized] ?? [];
+    const existingIndex = targets.findIndex(
+      (item) => item.packageIdx === target.packageIdx && item.detailIdx === target.detailIdx
+    );
+    if (existingIndex >= 0) {
+      targets[existingIndex] = nextTarget;
+    } else {
+      targets.unshift(nextTarget);
+    }
+    aliasMap[normalized] = targets;
+  });
+};
+
+const storageChangeListener = (
+  changes: Record<string, chrome.storage.StorageChange>,
+  areaName: string
+): void => {
+  if (areaName !== 'local' || !changes[DCCON_ALIAS_MAP_KEY]) return;
+  void loadDcconAliasItems();
+};
 
 // =================================================================
 // Event Handlers and Functions (이벤트 핸들러 및 함수)
@@ -257,9 +440,12 @@ const debounce = (callback: () => void, delay: number = 500): void => {
   debounceTimer = window.setTimeout(callback, delay);
 };
 
-const updatePageNavMode = async (mode: 'ajax' | 'full'): Promise<void> => {
+const updatePageNavMode = async (mode: 'ajax' | 'full' | 'infinite'): Promise<void> => {
   await settingsStore.savePageNavigationMode(mode);
-  UI.showAlert(`페이지 이동 방식이 '${mode === 'ajax' ? '빠른 이동' : '기본 이동'}' 모드로 변경되었습니다.`);
+  Events.setPageNavigationMode(mode);
+  const modeLabel =
+    mode === 'ajax' ? '빠른 이동' : mode === 'full' ? '기본 이동' : '무한 스크롤';
+  UI.showAlert(`페이지 이동 방식이 '${modeLabel}' 모드로 변경되었습니다.`);
 };
 
 const updateAltNumberEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
@@ -350,6 +536,38 @@ const updateAutoRefreshIntervalDebounced = (event: Event): void => {
   });
 };
 
+const updateAutoRefreshAllTabsEnabled = async (
+  storageKey: string | undefined,
+  enabled: boolean
+): Promise<void> => {
+  if (!storageKey) return;
+  await settingsStore.saveAutoRefreshAllTabsEnabled(enabled);
+  UI.showAlert(`모든 탭 글 목록 갱신 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
+};
+
+const updateAutoRefreshHighlightColor = async (event: Event): Promise<void> => {
+  const target = event.target as HTMLInputElement;
+  const result = await settingsStore.saveAutoRefreshHighlightColor(target.value);
+  if (!result.success) {
+    UI.showAlert(result.message || '오류 발생');
+    target.value = settingsStore.autoRefreshHighlightColor;
+  }
+};
+
+const updateAutoRefreshHighlightDurationDebounced = (event: Event): void => {
+  const target = event.target as HTMLInputElement;
+  const newValue = target.value;
+  debounce(async () => {
+    const result = await settingsStore.saveAutoRefreshHighlightDuration(newValue);
+    if (!result.success) {
+      UI.showAlert(result.message || '오류 발생');
+      target.value = settingsStore.autoRefreshHighlightDuration.toString();
+    } else {
+      UI.showAlert(`하이라이트 유지 시간이 ${newValue}초로 설정되었습니다.`);
+    }
+  });
+};
+
 const updateMacroIntervalDebounced = (event: Event): void => {
   const target = event.target as HTMLInputElement;
   const newValue = target.value;
@@ -382,6 +600,120 @@ const updatePauseOnInactiveEnabled = async (storageKey: string | undefined, enab
   if (!storageKey) return;
   await settingsStore.savePauseOnInactiveEnabled(enabled);
   UI.showAlert(`비활성 탭에서 새로고침 일시중지 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
+};
+
+const updateDcconAliasEnabled = async (event: Event): Promise<void> => {
+  const target = event.target as HTMLInputElement;
+  await settingsStore.saveDcconAliasEnabled(target.checked);
+  UI.showAlert(`디시콘 별칭 기능이 ${target.checked ? '활성화' : '비활성화'}되었습니다.`);
+};
+
+const loadDcconAliasItems = async (): Promise<void> => {
+  const aliasMap = await Storage.getDcconAliasMap();
+  const grouped = new Map<
+    string,
+    {
+      packageIdx: string;
+      detailIdx: string;
+      title?: string;
+      imageUrl?: string;
+      aliases: Array<{ alias: string; updatedAt: number }>;
+    }
+  >();
+
+  Object.values(aliasMap).forEach((targets) => {
+    targets.forEach((target) => {
+      const groupKey = `${target.packageIdx}:${target.detailIdx}`;
+      const draft = grouped.get(groupKey) ?? {
+        packageIdx: target.packageIdx,
+        detailIdx: target.detailIdx,
+        title: target.title,
+        imageUrl: target.imageUrl,
+        aliases: [],
+      };
+
+      draft.aliases.push({
+        alias: target.alias,
+        updatedAt: Number.isFinite(target.updatedAt) ? target.updatedAt : Date.now(),
+      });
+      if (!draft.title && target.title) draft.title = target.title;
+      if (!draft.imageUrl && target.imageUrl) draft.imageUrl = target.imageUrl;
+      grouped.set(groupKey, draft);
+    });
+  });
+
+  const flattened: DcconAliasListItem[] = [];
+  grouped.forEach((draft) => {
+    const dedupedAliases = new Map<string, { alias: string; updatedAt: number }>();
+    draft.aliases.forEach((entry) => {
+      const normalized = normalizeAliasKey(entry.alias);
+      if (!normalized) return;
+
+      const prev = dedupedAliases.get(normalized);
+      if (!prev || entry.updatedAt < prev.updatedAt) {
+        dedupedAliases.set(normalized, entry);
+      }
+    });
+
+    const aliases = Array.from(dedupedAliases.values())
+      .sort((a, b) => a.updatedAt - b.updatedAt || a.alias.localeCompare(b.alias, 'ko', { sensitivity: 'base', numeric: true }))
+      .map((entry) => entry.alias);
+    if (aliases.length === 0) return;
+
+    flattened.push({
+      alias: aliases[0],
+      aliases,
+      aliasTooltip: aliases.map((alias) => `@${alias}`).join(', '),
+      packageIdx: draft.packageIdx,
+      detailIdx: draft.detailIdx,
+      title: draft.title,
+      imageUrl: draft.imageUrl,
+      updatedAt: draft.aliases.reduce((max, item) => Math.max(max, item.updatedAt), 0),
+      id: `${draft.packageIdx}:${draft.detailIdx}`,
+    });
+  });
+
+  flattened.sort(compareAliasItems);
+  dcconAliasItems.value = flattened;
+};
+
+const editDcconAlias = async (item: DcconAliasListItem): Promise<void> => {
+  const userInput = window.prompt(
+    '새 별칭을 입력하세요. 쉼표(,)로 여러 개 등록 가능\n(@ 없이, 공백 불가, 별칭당 최대 5자)',
+    item.aliases.join(', ')
+  );
+  if (userInput === null) return;
+
+  const aliases = parseAliasListInput(userInput);
+  if (aliases.length === 0) {
+    UI.showAlert('별칭은 공백 없이 별칭당 최대 5자로 입력해주세요. 예: 안녕, ㅎㅇ');
+    return;
+  }
+
+  const aliasMap: DcconAliasMap = await Storage.getDcconAliasMap();
+  setAliasesForTarget(
+    aliasMap,
+    {
+      packageIdx: item.packageIdx,
+      detailIdx: item.detailIdx,
+      title: item.title,
+      imageUrl: item.imageUrl,
+    },
+    aliases
+  );
+
+  await Storage.saveDcconAliasMap(aliasMap);
+  await loadDcconAliasItems();
+  UI.showAlert(`별칭을 ${aliases.map((alias) => `@${alias}`).join(', ')}(으)로 수정했습니다.`);
+};
+
+const removeDcconAlias = async (item: DcconAliasListItem): Promise<void> => {
+  const aliasMap: DcconAliasMap = await Storage.getDcconAliasMap();
+  removeAliasTargetFromMap(aliasMap, item.packageIdx, item.detailIdx);
+
+  await Storage.saveDcconAliasMap(aliasMap);
+  await loadDcconAliasItems();
+  UI.showAlert(`${item.aliasTooltip} 별칭을 삭제했습니다.`);
 };
 
 const triggerRestoreInput = (): void => {
@@ -501,9 +833,15 @@ const closeModal = (): void => uiStore.closeModal();
 
 onMounted(() => {
   settingsStore.loadSettings();
+  void loadDcconAliasItems();
+  chrome.storage.onChanged.addListener(storageChangeListener);
   requestAnimationFrame(() => {
     isVisible.value = true;
   });
+});
+
+onUnmounted(() => {
+  chrome.storage.onChanged.removeListener(storageChangeListener);
 });
 </script>
 
@@ -545,25 +883,32 @@ onMounted(() => {
 }
 
 .tabs {
-  display: flex;
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 16px;
   border-bottom: 1px solid #dee2e6;
+  padding-bottom: 6px;
   flex-shrink: 0;
+  align-items: end;
 }
 
 .tab-button {
-  padding: 10px 15px;
+  width: 100%;
+  padding: 8px 4px;
   cursor: pointer;
   border: none;
   background-color: transparent;
-  font-size: 0.95rem;
+  font-size: 0.83rem;
   font-weight: 500;
   color: #6c757d;
-  margin-bottom: -1px;
+  margin-bottom: 0;
   border-bottom: 2px solid transparent;
   transition: color 0.15s ease-in-out, border-color 0.15s ease-in-out;
   white-space: nowrap;
-  width: auto;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tab-button:hover {
@@ -634,6 +979,16 @@ onMounted(() => {
 .interval-input:focus {
   border-color: #0d6efd;
   box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.color-input {
+  width: 52px;
+  height: 34px;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  padding: 2px;
+  background: #fff;
+  cursor: pointer;
 }
 
 .backup-restore-buttons {
@@ -770,6 +1125,167 @@ onMounted(() => {
   padding: 10px;
   border-radius: 6px;
   border: 1px solid #e9ecef;
+}
+
+.dccon-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.alias-refresh-button {
+  width: auto;
+  display: inline-block;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.dccon-enabled-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dccon-enabled-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.dccon-switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 21px;
+}
+
+.dccon-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.dccon-switch-slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background-color: #adb5bd;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.dccon-switch-slider::before {
+  content: '';
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  left: 2px;
+  top: 2px;
+  border-radius: 50%;
+  background-color: #fff;
+  transition: transform 0.15s ease;
+}
+
+.dccon-switch input:checked + .dccon-switch-slider {
+  background-color: #0d6efd;
+}
+
+.dccon-switch input:checked + .dccon-switch-slider::before {
+  transform: translateX(17px);
+}
+
+.alias-empty-state {
+  font-size: 0.85rem;
+  color: #6c757d;
+  border: 1px dashed #ced4da;
+  border-radius: 6px;
+  padding: 10px;
+  text-align: center;
+}
+
+.alias-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 410px;
+  overflow-y: auto;
+}
+
+.alias-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 8px;
+  background: #fff;
+}
+
+.alias-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.alias-item-main img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  background: #f7f8fa;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
+  flex-shrink: 0;
+}
+
+.alias-item-aliases {
+  font-size: 0.85rem;
+  color: #212529;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.alias-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alias-action-button {
+  border: 1px solid #ced4da;
+  background: #fff;
+  color: #495057;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.76rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.alias-edit-button {
+  width: 28px;
+  padding: 4px 0;
+  font-size: 0.88rem;
+}
+
+.alias-delete-button {
+  min-width: 40px;
+}
+
+.alias-action-button:hover,
+.alias-delete-button:hover {
+  background: #f8f9fa;
 }
 
 .warning-note {

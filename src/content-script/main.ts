@@ -16,6 +16,7 @@ import Events from '@/services/Events';
 import Gallery from '@/services/Gallery';
 import AutoRefresher from '@/services/AutoRefresher';
 import SearchPageEnhancer from '@/services/SearchPageEnhancer';
+import DcconAlias from '@/services/DcconAlias';
 import {
   FAVORITE_GALLERIES_KEY,
   ACTIVE_FAVORITES_PROFILE_KEY,
@@ -24,6 +25,7 @@ import {
   setupTabFocus,
   focusSubjectInputOnWritePage,
 } from '@/services/Global';
+import type { PageNavigationMode } from '@/types';
 
 console.log('👋 DCInside ShortCut 콘텐츠 스크립트 (TS) 로드됨!');
 
@@ -58,6 +60,10 @@ interface LeaderUpdateMessage extends BaseMessage {
   leaderTabId: number | null;
 }
 type RuntimeMessage = BaseMessage | StartMacroMessage | StopMacroMessage | LeaderUpdateMessage;
+
+function isPageNavigationMode(value: unknown): value is PageNavigationMode {
+  return value === 'ajax' || value === 'full' || value === 'infinite';
+}
 
 // =================================================================
 // Global State
@@ -114,7 +120,11 @@ function setupStorageListener(): void {
         // 각 키에 맞춰 settingsStore의 상태를 직접 업데이트합니다.
         switch (key) {
           case 'pageNavigationMode':
-            settingsStore.pageNavigationMode = newValue;
+          case 'dcinside_page_navigation_mode':
+            if (isPageNavigationMode(newValue)) {
+              settingsStore.pageNavigationMode = newValue;
+              Events.setPageNavigationMode(newValue);
+            }
             break;
           case 'altNumberEnabled':
             settingsStore.altNumberEnabled = newValue;
@@ -154,6 +164,15 @@ function setupStorageListener(): void {
           case 'autoRefreshInterval':
             settingsStore.autoRefreshInterval = Number(newValue);
             break;
+          case 'autoRefreshAllTabsEnabled':
+            settingsStore.autoRefreshAllTabsEnabled = newValue;
+            break;
+          case 'autoRefreshHighlightColor':
+            settingsStore.autoRefreshHighlightColor = newValue;
+            break;
+          case 'autoRefreshHighlightDuration':
+            settingsStore.autoRefreshHighlightDuration = Number(newValue);
+            break;
           case 'shortcutSubmitCommentKeyEnabled':
             settingsStore.shortcutSubmitCommentKeyEnabled = newValue;
             break;
@@ -174,6 +193,18 @@ function setupStorageListener(): void {
               settingsStore.shortcutEnabled[key] = newValue;
             }
             break;
+        }
+
+        if (
+          ['autoRefreshEnabled', 'autoRefreshInterval', 'autoRefreshAllTabsEnabled', 'pauseOnInactiveEnabled'].includes(
+            key
+          )
+        ) {
+          handleAutoRefresherState();
+        }
+
+        if (['autoRefreshHighlightColor', 'autoRefreshHighlightDuration'].includes(key)) {
+          AutoRefresher.applyPendingHighlights();
         }
       }
     }
@@ -244,19 +275,17 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
 
 /**
  * [핵심] 자동 새로고침의 시작/중지를 결정하는 함수.
- * 이제 오직 백그라운드가 알려주는 리더 정보에만 의존합니다.
+ * "모든 탭 갱신" 모드가 꺼져 있을 때는 리더 탭에서만 동작합니다.
  */
 function handleAutoRefresherState(): void {
-  if (myTabId === null) return;
-
-  const amITheLeader = myTabId === knownLeaderId;
+  const refreshAllTabs = settingsStore.autoRefreshAllTabsEnabled;
+  const amITheLeader = myTabId !== null && myTabId === knownLeaderId;
   const isEnabledInSettings = settingsStore.autoRefreshEnabled;
   const isRefreshable = Gallery.isRefreshablePage();
-
-  const shouldStart = amITheLeader && isEnabledInSettings && isRefreshable;
+  const shouldStart = isEnabledInSettings && isRefreshable && (refreshAllTabs || amITheLeader);
 
   console.log(
-    `[AutoRefresher] 상태 확인: 리더? ${amITheLeader}, 설정 활성화? ${isEnabledInSettings}, 새로고침 가능? ${isRefreshable} -> 최종 결정: ${shouldStart ? '시작' : '중지'}`
+    `[AutoRefresher] 상태 확인: 모든 탭 모드? ${refreshAllTabs}, 리더? ${amITheLeader}, 설정 활성화? ${isEnabledInSettings}, 새로고침 가능? ${isRefreshable} -> 최종 결정: ${shouldStart ? '시작' : '중지'}`
   );
 
   if (shouldStart) {
@@ -333,6 +362,8 @@ async function initialize(): Promise<void> {
     addPrefetchHints();
     handlePageLoadScroll();
     SearchPageEnhancer.init();
+    DcconAlias.init();
+    Events.setPageNavigationMode(settingsStore.pageNavigationMode);
 
     setupObservers();
 
@@ -348,13 +379,7 @@ async function initialize(): Promise<void> {
       // 포커스가 돌아오면 background.ts가 리더를 재선출하고, leaderUpdate 메시지를 보낼 것입니다.
       // 여기서는 UI 효과만 처리합니다.
       if (AutoRefresher.timerId) AutoRefresher.restoreOriginalTitle();
-      const newPosts = document.querySelectorAll<HTMLElement>('tr.new-post-highlight');
-      if (newPosts.length > 0) {
-        newPosts.forEach((post) => {
-          post.classList.add('highlight-start');
-          setTimeout(() => post.classList.remove('new-post-highlight', 'highlight-start'), 2500);
-        });
-      }
+      AutoRefresher.applyPendingHighlights();
     });
 
     chrome.runtime.sendMessage({ action: 'contentScriptLoaded' });

@@ -37,7 +37,7 @@ td.gall_num.shortcut-labeled {
  */
 @keyframes fade-out-highlight {
   from {
-    background-color: rgba(255, 235, 59, 0.5); /* 시작 색상 (노란색 반투명) */
+    background-color: var(--dc-new-post-highlight-color, rgba(255, 235, 59, 0.5));
   }
   to {
     background-color: transparent; /* 종료 색상 (투명) */
@@ -49,7 +49,7 @@ td.gall_num.shortcut-labeled {
  * 처음에는 애니메이션 없이 배경색만 적용됩니다.
  */
 tr.new-post-highlight {
-  background-color: rgba(255, 235, 59, 0.5);
+  background-color: var(--dc-new-post-highlight-color, rgba(255, 235, 59, 0.5));
 }
 
 /*
@@ -58,7 +58,7 @@ tr.new-post-highlight {
  */
 tr.new-post-highlight.highlight-start {
   /* 2.5초 동안 애니메이션을 실행하고, 애니메이션이 끝난 후의 상태(배경색 투명)를 유지합니다. */
-  animation: fade-out-highlight 2.5s ease-in-out forwards;
+  animation: fade-out-highlight var(--dc-new-post-highlight-duration, 2.5s) ease-in-out forwards;
 }
 
 /* ==========================================================================
@@ -70,4 +70,79 @@ tr.new-post-highlight.highlight-start {
  */
 table.gall_list.empty tbody td {
   height: 27px !important;
+}
+
+/* ==========================================================================
+   디시콘 별칭 추천 팝업
+   ========================================================================== */
+
+.dc-shortcut-dccon-popup {
+  position: fixed;
+  z-index: 9998;
+  min-width: 390px;
+  max-width: 560px;
+  border: 1px solid #d9dde4;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+  padding: 5px;
+}
+
+.dc-shortcut-dccon-popup-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 3px;
+  max-height: 242px;
+  overflow-y: auto;
+}
+
+.dc-shortcut-dccon-popup-cell {
+  margin: 0;
+  padding: 0;
+}
+
+.dc-shortcut-dccon-popup-button {
+  width: 100%;
+  border: 1px solid #eef0f4;
+  background: #fff;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 1px;
+  min-height: 72px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.dc-shortcut-dccon-popup-button:hover,
+.dc-shortcut-dccon-popup-button.is-selected {
+  background: #f2f6ff;
+  border-color: #c8d7ff;
+}
+
+.dc-shortcut-dccon-popup-button img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #f8f9fb;
+  flex-shrink: 0;
+}
+
+.dc-shortcut-dccon-popup-alias {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2329;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
 }

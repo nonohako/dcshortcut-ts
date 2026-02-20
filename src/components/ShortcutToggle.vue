@@ -20,10 +20,9 @@
         type="text"
         class="shortcut-toggle-input"
         :value="currentKeyDisplay"
-        maxlength="1"
         @keydown="handleKeydown"
         @blur="handleInputBlur"
-        placeholder="키"
+        placeholder="키 조합"
       />
   
       <!-- 활성화/비활성화 토글 스위치 -->
@@ -50,9 +49,10 @@
     </div>
   </template>
   
-  <script setup lang="ts">
+<script setup lang="ts">
   import { computed } from 'vue';
-  import UI from '@/services/UI'; // UI 유틸리티 모듈 (showAlert 등)
+  import { getShortcutComboFromEvent } from '@/services/Shortcut';
+  import UI from '@/services/UI';
   import FootnoteTrigger from './FootnoteTrigger.vue'; // 각주/툴팁 컴포넌트
   
   // =================================================================
@@ -126,24 +126,25 @@
    const handleKeydown = (e: KeyboardEvent): void => {
   e.preventDefault();
   e.stopPropagation();
-  if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)) {
-    e.preventDefault(); // 기본 동작도 막음
+
+  const shortcutCombo = getShortcutComboFromEvent(e);
+  if (!shortcutCombo) {
+    const isImeOrHangulInput =
+      ['Process', 'Dead', 'Unidentified', 'Compose', 'HangulMode', 'HanjaMode'].includes(
+        e.key
+      ) || /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(e.key);
+    if (isImeOrHangulInput) {
+      UI.showAlert('한글 입력 상태에서는 단축키를 지정할 수 없습니다. 영문/숫자/기호로 입력해주세요.');
+    }
     return;
   }
-  const newKey = e.key;
-  const newKeyUpper = newKey.toUpperCase();
-  if (newKey.length === 1 && /^[A-Z0-9\[\]`]$/.test(newKeyUpper)) {
-    // [수정] storageKeyKey가 있을 때만 emit
-    if (props.storageKeyKey) {
-        emit('update:key', props.storageKeyKey, newKeyUpper, props.label);
-    }
-    const target = e.target as HTMLInputElement;
-    target.value = '';
-    target.blur();
-  } else if (newKey.length === 1) {
-    UI.showAlert("단축키는 영문(A-Z), 숫자(0-9), 특수문자([, ], `)만 가능합니다.");
-    (e.target as HTMLInputElement).value = '';
+
+  if (props.storageKeyKey) {
+    emit('update:key', props.storageKeyKey, shortcutCombo, props.label);
   }
+
+  const target = e.target as HTMLInputElement;
+  target.blur();
 };
   
   /**
@@ -206,7 +207,7 @@
   }
   
   .shortcut-toggle-input {
-    width: 40px;
+    width: 140px;
     padding: 6px 8px;
     border: 1px solid #ced4da;
     border-radius: 6px;

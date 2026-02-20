@@ -25,4 +25,23 @@ export type FavoriteProfiles = Record<string, FavoriteGalleries>;
  * @type PageNavigationMode
  * @description 게시판 페이지 이동 방식을 정의하는 타입.
  */
-export type PageNavigationMode = 'ajax' | 'full';
+export type PageNavigationMode = 'ajax' | 'full' | 'infinite';
+
+/**
+ * @interface DcconAliasTarget
+ * @description 사용자 지정 디시콘 별칭에 매핑되는 대상 정보.
+ */
+export interface DcconAliasTarget {
+  alias: string;
+  packageIdx: string;
+  detailIdx: string;
+  title?: string;
+  imageUrl?: string;
+  updatedAt: number;
+}
+
+/**
+ * @type DcconAliasMap
+ * @description 정규화된 별칭 키를 기준으로 디시콘 대상 배열을 저장하는 타입.
+ */
+export type DcconAliasMap = Record<string, DcconAliasTarget[]>;

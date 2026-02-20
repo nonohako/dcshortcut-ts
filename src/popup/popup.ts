@@ -19,6 +19,8 @@ type ShortcutAction =
   | 'G'
   | 'A'
   | 'S'
+  | 'GallerySearch'
+  | 'GlobalSearch'
   | 'Z'
   | 'X'
   | 'PrevProfile'
@@ -40,6 +42,8 @@ const shortcutData = {
     G: '개념글',
     A: '다음 페이지',
     S: '이전 페이지',
+    GallerySearch: '갤러리 내부 검색',
+    GlobalSearch: '통합 검색',
     Z: '다음 글',
     X: '이전 글',
     PrevProfile: '이전 프로필',
@@ -71,6 +75,8 @@ const defaultKeys: Record<ShortcutAction, string> = {
   G: 'G',
   A: 'A',
   S: 'S',
+  GallerySearch: 'V',
+  GlobalSearch: 'Alt+V',
   Z: 'Z',
   X: 'X',
   PrevProfile: '[',

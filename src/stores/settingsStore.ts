@@ -2,6 +2,11 @@ import { defineStore } from 'pinia';
 import { ref, reactive, type Ref } from 'vue';
 import Storage from '@/services/Storage';
 import type { PageNavigationMode } from '@/types';
+import {
+  normalizeShortcutCombo,
+  normalizeShortcutWithFallback,
+  shortcutComboHasAlt,
+} from '@/services/Shortcut';
 
 // =================================================================
 // Type Definitions (타입 정의)
@@ -23,6 +28,8 @@ type ShortcutAction =
   | 'G'
   | 'A'
   | 'S'
+  | 'GallerySearch'
+  | 'GlobalSearch'
   | 'Z'
   | 'X'
   | 'PrevProfile'
@@ -52,10 +59,14 @@ interface SettingsStoreReturn {
   favoritesPreviewOpacity: Ref<number>;
   autoRefreshEnabled: Ref<boolean>;
   autoRefreshInterval: Ref<number>;
+  autoRefreshAllTabsEnabled: Ref<boolean>;
+  autoRefreshHighlightColor: Ref<string>;
+  autoRefreshHighlightDuration: Ref<number>;
   shortcutSubmitCommentKeyEnabled: Ref<boolean>;
   shortcutSubmitImagePostKeyEnabled: Ref<boolean>;
   shortcutToggleModalKeyEnabled: Ref<boolean>;
   pauseOnInactiveEnabled: Ref<boolean>;
+  dcconAliasEnabled: Ref<boolean>;
 
   // Actions
   loadSettings: () => Promise<void>;
@@ -76,7 +87,11 @@ interface SettingsStoreReturn {
   saveFavoritesPreviewOpacity: (opacity: number | string) => Promise<SaveResult>;
   saveAutoRefreshEnabled: (enabled: boolean) => Promise<void>;
   saveAutoRefreshInterval: (interval: number | string) => Promise<SaveResult>;
+  saveAutoRefreshAllTabsEnabled: (enabled: boolean) => Promise<void>;
+  saveAutoRefreshHighlightColor: (color: string) => Promise<SaveResult>;
+  saveAutoRefreshHighlightDuration: (duration: number | string) => Promise<SaveResult>;
   savePauseOnInactiveEnabled: (enabled: boolean) => Promise<void>;
+  saveDcconAliasEnabled: (enabled: boolean) => Promise<void>;
 
   // Constants
   customizableShortcutActions: ShortcutAction[];
@@ -98,18 +113,25 @@ const defaultShortcutKeys: Record<ShortcutAction, string> = {
   G: 'G',
   A: 'A',
   S: 'S',
+  GallerySearch: 'V',
+  GlobalSearch: 'Alt+V',
   Z: 'Z',
   X: 'X',
   PrevProfile: '[',
   NextProfile: ']',
-  SubmitComment: 'D',
-  SubmitImagePost: 'W',
-  ToggleModal: '`',
+  SubmitComment: 'Alt+D',
+  SubmitImagePost: 'Alt+W',
+  ToggleModal: 'Alt+`',
 };
 
 const customizableShortcutActions: ShortcutAction[] = Object.keys(
   defaultShortcutKeys
 ) as ShortcutAction[];
+const ALT_REQUIRED_ACTIONS = new Set<ShortcutAction>([
+  'SubmitComment',
+  'SubmitImagePost',
+  'ToggleModal',
+]);
 
 // =================================================================
 // Pinia Store Definition (Pinia 스토어 정의)
@@ -132,10 +154,14 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   const favoritesPreviewOpacity = ref<number>(0.85);
   const autoRefreshEnabled = ref<boolean>(false);
   const autoRefreshInterval = ref<number>(10);
+  const autoRefreshAllTabsEnabled = ref<boolean>(false);
+  const autoRefreshHighlightColor = ref<string>('#ffeb3b');
+  const autoRefreshHighlightDuration = ref<number>(2.5);
   const shortcutSubmitCommentKeyEnabled = ref<boolean>(true);
   const shortcutSubmitImagePostKeyEnabled = ref<boolean>(true);
   const shortcutToggleModalKeyEnabled = ref<boolean>(true);
   const pauseOnInactiveEnabled = ref<boolean>(true);
+  const dcconAliasEnabled = ref<boolean>(true);
 
   // --- Actions (액션) ---
 
@@ -155,6 +181,11 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
       Storage.getFavoritesPreviewOpacity().then((val) => (favoritesPreviewOpacity.value = val)),
       Storage.getAutoRefreshEnabled().then((val) => (autoRefreshEnabled.value = val)),
       Storage.getAutoRefreshInterval().then((val) => (autoRefreshInterval.value = val)),
+      Storage.getAutoRefreshAllTabsEnabled().then((val) => (autoRefreshAllTabsEnabled.value = val)),
+      Storage.getAutoRefreshHighlightColor().then((val) => (autoRefreshHighlightColor.value = val)),
+      Storage.getAutoRefreshHighlightDuration().then(
+        (val) => (autoRefreshHighlightDuration.value = val)
+      ),
       Storage.getShortcutEnabled('shortcutMacroZEnabled').then(
         (val) => (macroZEnabled.value = val)
       ),
@@ -171,17 +202,22 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
         (val) => (shortcutToggleModalKeyEnabled.value = val)
       ),
       Storage.getPauseOnInactiveEnabled().then((val) => (pauseOnInactiveEnabled.value = val)),
+      Storage.getDcconAliasEnabled().then((val) => (dcconAliasEnabled.value = val)),
     ];
 
     customizableShortcutActions.forEach((action) => {
       const keyKey = `shortcut${action}Key`;
       promises.push(
-        Storage.getShortcutKey(keyKey).then(
-          (val) => (shortcutKeys[keyKey] = val ?? defaultShortcutKeys[action])
-        )
+        Storage.getShortcutKey(keyKey).then((val) => {
+          shortcutKeys[keyKey] = normalizeShortcutWithFallback(
+            val,
+            defaultShortcutKeys[action],
+            ALT_REQUIRED_ACTIONS.has(action)
+          );
+        })
       );
 
-      const isAltShortcut = ['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(action);
+      const isAltShortcut = ALT_REQUIRED_ACTIONS.has(action);
       if (!isAltShortcut) {
         const enabledKey = `shortcut${action}Enabled`;
         promises.push(
@@ -197,7 +233,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   }
 
   async function savePageNavigationMode(mode: PageNavigationMode): Promise<void> {
-    if (mode !== 'ajax' && mode !== 'full') return;
+    if (mode !== 'ajax' && mode !== 'full' && mode !== 'infinite') return;
     await Storage.savePageNavigationMode(mode);
     pageNavigationMode.value = mode;
   }
@@ -251,37 +287,44 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     newKey: string,
     isAltRequired: boolean = false
   ): Promise<SaveResult> {
-    newKey = newKey.toUpperCase();
-    if (newKey.length !== 1 || !/^[A-Z0-9\[\]`]$/.test(newKey)) {
+    const normalizedShortcut = normalizeShortcutCombo(newKey);
+    if (!normalizedShortcut) {
       return {
         success: false,
-        message: '단축키는 영문(A-Z), 숫자(0-9), 특수문자([, ], `)만 가능합니다.',
+        message:
+          '유효한 단축키 조합이 아닙니다. 영문/숫자/기호 키로 입력하세요. 예: Ctrl+Shift+K, Alt+1, F2',
+      };
+    }
+
+    if (isAltRequired && !shortcutComboHasAlt(normalizedShortcut)) {
+      return {
+        success: false,
+        message: '이 단축키는 Alt를 포함해야 합니다. 예: Alt+D, Alt+Shift+W',
       };
     }
 
     for (const action of customizableShortcutActions) {
       const otherStorageKey = `shortcut${action}Key`;
       if (otherStorageKey === storageKey) continue;
-      const currentAssignedKey = (
-        shortcutKeys[otherStorageKey] ?? defaultShortcutKeys[action]
-      ).toUpperCase();
-      if (currentAssignedKey === newKey) {
-        const otherActionIsAlt = ['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(
-          action
-        );
-        if (isAltRequired === otherActionIsAlt) {
-          const conflictLabel = `${action} 키`;
-          return {
-            success: false,
-            message: `'${newKey}'는 이미 ${conflictLabel}에 할당되어 있습니다.`,
-          };
-        }
+
+      const currentAssignedShortcut = normalizeShortcutWithFallback(
+        shortcutKeys[otherStorageKey],
+        defaultShortcutKeys[action],
+        ALT_REQUIRED_ACTIONS.has(action)
+      );
+
+      if (currentAssignedShortcut === normalizedShortcut) {
+        const conflictLabel = `${action} 키`;
+        return {
+          success: false,
+          message: `'${normalizedShortcut}'는 이미 ${conflictLabel}에 할당되어 있습니다.`,
+        };
       }
     }
 
-    await Storage.saveShortcutKey(storageKey, newKey);
-    shortcutKeys[storageKey] = newKey;
-    return { success: true, message: `단축키가 '${newKey}'(으)로 변경되었습니다.` };
+    await Storage.saveShortcutKey(storageKey, normalizedShortcut);
+    shortcutKeys[storageKey] = normalizedShortcut;
+    return { success: true, message: `단축키가 '${normalizedShortcut}'(으)로 변경되었습니다.` };
   }
 
   async function saveMacroInterval(interval: number | string): Promise<SaveResult> {
@@ -329,9 +372,38 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     return { success: true };
   }
 
+  async function saveAutoRefreshAllTabsEnabled(enabled: boolean): Promise<void> {
+    await Storage.saveAutoRefreshAllTabsEnabled(enabled);
+    autoRefreshAllTabsEnabled.value = enabled;
+  }
+
+  async function saveAutoRefreshHighlightColor(color: string): Promise<SaveResult> {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      return { success: false, message: '하이라이트 색상은 #RRGGBB 형식이어야 합니다.' };
+    }
+    await Storage.saveAutoRefreshHighlightColor(color);
+    autoRefreshHighlightColor.value = color;
+    return { success: true };
+  }
+
+  async function saveAutoRefreshHighlightDuration(duration: number | string): Promise<SaveResult> {
+    const numericDuration = Number(duration);
+    if (isNaN(numericDuration) || numericDuration < -1) {
+      return { success: false, message: '하이라이트 시간은 -1 이상이어야 합니다.' };
+    }
+    await Storage.saveAutoRefreshHighlightDuration(numericDuration);
+    autoRefreshHighlightDuration.value = numericDuration;
+    return { success: true };
+  }
+
   async function savePauseOnInactiveEnabled(enabled: boolean): Promise<void> {
     await Storage.savePauseOnInactiveEnabled(enabled);
     pauseOnInactiveEnabled.value = enabled;
+  }
+
+  async function saveDcconAliasEnabled(enabled: boolean): Promise<void> {
+    await Storage.saveDcconAliasEnabled(enabled);
+    dcconAliasEnabled.value = enabled;
   }
 
   // --- Return (반환) ---
@@ -351,10 +423,14 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     favoritesPreviewOpacity,
     autoRefreshEnabled,
     autoRefreshInterval,
+    autoRefreshAllTabsEnabled,
+    autoRefreshHighlightColor,
+    autoRefreshHighlightDuration,
     shortcutSubmitCommentKeyEnabled,
     shortcutSubmitImagePostKeyEnabled,
     shortcutToggleModalKeyEnabled,
     pauseOnInactiveEnabled,
+    dcconAliasEnabled,
     loadSettings,
     savePageNavigationMode,
     saveAltNumberEnabled,
@@ -369,7 +445,11 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     saveFavoritesPreviewOpacity,
     saveAutoRefreshEnabled,
     saveAutoRefreshInterval,
+    saveAutoRefreshAllTabsEnabled,
+    saveAutoRefreshHighlightColor,
+    saveAutoRefreshHighlightDuration,
     savePauseOnInactiveEnabled,
+    saveDcconAliasEnabled,
     customizableShortcutActions,
     defaultShortcutKeys,
   };

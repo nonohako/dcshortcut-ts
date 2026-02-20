@@ -34,6 +34,11 @@ interface AutoRefresherType {
   scheduleNextCheck(currentGenerationId: number): void;
   restoreOriginalTitle(): void;
   checkNewPosts(currentGenerationId: number): Promise<void>;
+  getHighlightDurationSeconds(): number;
+  getHighlightColor(): string;
+  clearHighlightStyles(row: HTMLTableRowElement): void;
+  applyHighlightToRow(row: HTMLTableRowElement): void;
+  applyPendingHighlights(root?: ParentNode): void;
   insertAndTrimPosts(targetTbody: HTMLTableSectionElement, newRows: HTMLTableRowElement[]): void;
 }
 
@@ -284,6 +289,62 @@ const AutoRefresher: AutoRefresherType = {
     }
   },
 
+  getHighlightDurationSeconds(): number {
+    if (!this.settingsStore) return 2.5;
+    const duration = Number(this.settingsStore.autoRefreshHighlightDuration);
+    if (isNaN(duration)) return 2.5;
+    return duration >= -1 ? duration : -1;
+  },
+
+  getHighlightColor(): string {
+    const color = this.settingsStore?.autoRefreshHighlightColor ?? '#ffeb3b';
+    return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : '#ffeb3b';
+  },
+
+  clearHighlightStyles(row: HTMLTableRowElement): void {
+    row.classList.remove('new-post-highlight', 'highlight-start');
+    row.style.backgroundColor = '';
+    row.style.removeProperty('--dc-new-post-highlight-color');
+    row.style.removeProperty('--dc-new-post-highlight-duration');
+    delete row.dataset.dcHighlightAnimating;
+  },
+
+  applyHighlightToRow(row: HTMLTableRowElement): void {
+    const highlightDuration = this.getHighlightDurationSeconds();
+    const highlightColor = this.getHighlightColor();
+
+    if (highlightDuration === 0) {
+      this.clearHighlightStyles(row);
+      return;
+    }
+
+    row.classList.add('new-post-highlight');
+    row.style.setProperty('--dc-new-post-highlight-color', highlightColor);
+
+    if (highlightDuration < 0) {
+      row.style.backgroundColor = highlightColor;
+      row.classList.remove('highlight-start');
+      return;
+    }
+
+    if (row.dataset.dcHighlightAnimating === 'true') return;
+
+    row.dataset.dcHighlightAnimating = 'true';
+    row.style.backgroundColor = '';
+    row.style.setProperty('--dc-new-post-highlight-duration', `${highlightDuration}s`);
+    row.classList.remove('highlight-start');
+    requestAnimationFrame(() => row.classList.add('highlight-start'));
+
+    window.setTimeout(() => {
+      this.clearHighlightStyles(row);
+    }, highlightDuration * 1000);
+  },
+
+  applyPendingHighlights(root: ParentNode = document): void {
+    const pendingRows = root.querySelectorAll<HTMLTableRowElement>('tr.new-post-highlight');
+    pendingRows.forEach((row) => this.applyHighlightToRow(row));
+  },
+
   insertAndTrimPosts(
     targetTbody: HTMLTableSectionElement,
     newRowsFromFetch: HTMLTableRowElement[]
@@ -311,6 +372,8 @@ const AutoRefresher: AutoRefresherType = {
     newRowsFromFetch.forEach((newRowSource) => {
       const newRow = newRowSource.cloneNode(true) as HTMLTableRowElement;
       const newColumnCount = newRow.cells.length;
+      const highlightDuration = this.getHighlightDurationSeconds();
+      const highlightColor = this.getHighlightColor();
 
       if (newColumnCount < existingColumnCount) {
         const columnsToAdd = existingColumnCount - newColumnCount;
@@ -339,18 +402,18 @@ const AutoRefresher: AutoRefresherType = {
         }
       }
 
-      newRow.classList.add('new-post-highlight');
+      if (highlightDuration !== 0) {
+        newRow.classList.add('new-post-highlight');
+        newRow.style.setProperty('--dc-new-post-highlight-color', highlightColor);
+      }
+      if (highlightDuration < 0) {
+        newRow.style.backgroundColor = highlightColor;
+      }
       targetTbody.insertBefore(newRow, firstValidPostRow);
     });
 
     if (document.hasFocus()) {
-      const insertedRows = targetTbody.querySelectorAll<HTMLTableRowElement>('.new-post-highlight');
-      insertedRows.forEach((row) => {
-        row.classList.add('highlight-start');
-        setTimeout(() => {
-          row.classList.remove('new-post-highlight', 'highlight-start');
-        }, 2500);
-      });
+      this.applyPendingHighlights(targetTbody);
     }
 
     const allValidRows: HTMLTableRowElement[] = [];

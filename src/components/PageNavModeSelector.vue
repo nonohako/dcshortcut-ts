@@ -13,10 +13,10 @@
           />
           <span class="mode-text">{{ modeInfo.text }}</span>
   
-          <!-- '빠른 이동' 모드에만 툴팁을 표시합니다. -->
+          <!-- 각 모드별 보충 설명 툴팁 -->
           <FootnoteTrigger
-            v-if="modeInfo.value === 'ajax'"
-            :tooltip-text="ajaxTooltipText"
+            v-if="modeInfo.value === 'ajax' || modeInfo.value === 'infinite'"
+            :tooltip-text="modeInfo.value === 'ajax' ? ajaxTooltipText : infiniteTooltipText"
             style="margin-left: 6px;"
           />
         </label>
@@ -26,17 +26,12 @@
   
   <script setup lang="ts">
   import { ref } from 'vue';
+  import type { PageNavigationMode } from '@/types';
   import FootnoteTrigger from './FootnoteTrigger.vue';
   
   // =================================================================
   // Type Definitions (타입 정의)
   // =================================================================
-  
-  /**
-   * @type PageNavigationMode
-   * @description 페이지 이동 모드의 종류를 정의하는 리터럴 타입.
-   */
-  type PageNavigationMode = 'ajax' | 'full';
   
   /**
    * @interface PageNavModeSelectorProps
@@ -79,12 +74,18 @@
   const modes = ref<ModeInfo[]>([
     { value: 'ajax', text: '⚡ 빠른 이동 (새로고침X)' },
     { value: 'full', text: '🔄 기본 이동 (새로고침)' },
+    { value: 'infinite', text: '∞ 무한 스크롤 (하단 자동 로드)' },
   ]);
   
   /**
    * @description '빠른 이동' 모드에 대한 설명 툴팁 텍스트를 담고 있는 ref.
    */
   const ajaxTooltipText = ref<string>("외부 자동 새로고침 확장 프로그램과 충돌할 수 있습니다. 내장한 자동 새로고침 기능을 이용하세요.");
+
+  /**
+   * @description '무한 스크롤' 모드에 대한 설명 툴팁 텍스트를 담고 있는 ref.
+   */
+  const infiniteTooltipText = ref<string>('글 목록 하단에 도달하면 다음 페이지를 자동으로 이어 붙여 불러옵니다.');
   </script>
   
   <style scoped>

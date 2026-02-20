@@ -1,5 +1,11 @@
-import type { FavoriteProfiles, PageNavigationMode } from '@/types';
-import { FAVORITE_GALLERIES_KEY, PAGE_NAVIGATION_MODE_KEY, MACRO_INTERVAL_KEY } from './Global';
+import type { DcconAliasMap, FavoriteProfiles, PageNavigationMode } from '@/types';
+import {
+  DCCON_ALIAS_MAP_KEY,
+  DCCON_ALIAS_ENABLED_KEY,
+  FAVORITE_GALLERIES_KEY,
+  PAGE_NAVIGATION_MODE_KEY,
+  MACRO_INTERVAL_KEY,
+} from './Global';
 
 /**
  * @module Storage
@@ -8,6 +14,54 @@ import { FAVORITE_GALLERIES_KEY, PAGE_NAVIGATION_MODE_KEY, MACRO_INTERVAL_KEY } 
  * webextension-polyfill 라이브러리를 통해 `chrome.*` API는 다른 브라우저(예: Firefox)의 `browser.*` API와 호환됩니다.
  */
 export type { PageNavigationMode };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function sanitizeDcconAliasMap(rawValue: unknown): DcconAliasMap {
+  if (!isRecord(rawValue)) return {};
+
+  const sanitized: DcconAliasMap = {};
+  for (const [aliasKey, value] of Object.entries(rawValue)) {
+    if (!Array.isArray(value)) continue;
+
+    const normalizedAliasKey = aliasKey.trim().toLocaleLowerCase();
+    if (!normalizedAliasKey) continue;
+
+    const uniqueTargets = new Map<string, DcconAliasMap[string][number]>();
+
+    value.forEach((target) => {
+      if (!isRecord(target)) return;
+
+      const alias = typeof target.alias === 'string' ? target.alias.trim() : '';
+      const packageIdx = typeof target.packageIdx === 'string' ? target.packageIdx.trim() : '';
+      const detailIdx = typeof target.detailIdx === 'string' ? target.detailIdx.trim() : '';
+      if (!alias || !packageIdx || !detailIdx) return;
+
+      const updatedAt = Number(target.updatedAt);
+      const title = typeof target.title === 'string' ? target.title : undefined;
+      const imageUrl = typeof target.imageUrl === 'string' ? target.imageUrl : undefined;
+      const dedupeKey = `${packageIdx}:${detailIdx}`;
+
+      uniqueTargets.set(dedupeKey, {
+        alias,
+        packageIdx,
+        detailIdx,
+        title,
+        imageUrl,
+        updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
+      });
+    });
+
+    const dedupedTargets = Array.from(uniqueTargets.values());
+    if (dedupedTargets.length > 0) {
+      sanitized[normalizedAliasKey] = dedupedTargets;
+    }
+  }
+
+  return sanitized;
+}
 
 const Storage = {
   /**
@@ -130,6 +184,57 @@ const Storage = {
     }
   },
 
+  async getAutoRefreshAllTabsEnabled(): Promise<boolean> {
+    const defaultValue = false;
+    return await this.getData('autoRefreshAllTabsEnabled', defaultValue);
+  },
+
+  async saveAutoRefreshAllTabsEnabled(enabled: boolean): Promise<void> {
+    try {
+      await this.setData('autoRefreshAllTabsEnabled', enabled);
+    } catch (error) {
+      console.error('Failed to save autoRefreshAllTabsEnabled:', error);
+    }
+  },
+
+  async getAutoRefreshHighlightColor(): Promise<string> {
+    const defaultValue = '#ffeb3b';
+    const value = await this.getData('autoRefreshHighlightColor', defaultValue);
+    return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : defaultValue;
+  },
+
+  async saveAutoRefreshHighlightColor(color: string): Promise<void> {
+    try {
+      if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        await this.setData('autoRefreshHighlightColor', color);
+      } else {
+        console.warn(`Invalid auto-refresh highlight color: ${color}. Not saved.`);
+      }
+    } catch (error) {
+      console.error('Failed to save autoRefreshHighlightColor:', error);
+    }
+  },
+
+  async getAutoRefreshHighlightDuration(): Promise<number> {
+    const defaultValue = 2.5;
+    const value = await this.getData('autoRefreshHighlightDuration', defaultValue);
+    const numericValue = Number(value);
+    return !isNaN(numericValue) && numericValue >= -1 ? numericValue : defaultValue;
+  },
+
+  async saveAutoRefreshHighlightDuration(duration: number): Promise<void> {
+    try {
+      const value = Number(duration);
+      if (!isNaN(value) && value >= -1) {
+        await this.setData('autoRefreshHighlightDuration', value);
+      } else {
+        console.warn(`Invalid auto-refresh highlight duration: ${duration}. Not saved.`);
+      }
+    } catch (error) {
+      console.error('Failed to save autoRefreshHighlightDuration:', error);
+    }
+  },
+
   // --- 비활성 탭에서 자동 새로고침 일시정지 ---
   async getPauseOnInactiveEnabled(): Promise<boolean> {
     const defaultValue = true; // 기본값: 활성화
@@ -172,7 +277,7 @@ const Storage = {
   },
 
   async savePageNavigationMode(mode: PageNavigationMode): Promise<void> {
-    if (mode !== 'ajax' && mode !== 'full') return;
+    if (mode !== 'ajax' && mode !== 'full' && mode !== 'infinite') return;
     await this.setData(PAGE_NAVIGATION_MODE_KEY, mode);
   },
 
@@ -271,6 +376,35 @@ const Storage = {
       await this.setData('shortcutDRefreshCommentEnabled', enabled);
     } catch (error) {
       console.error('Failed to save shortcutDRefreshCommentEnabled:', error);
+    }
+  },
+
+  // --- 디시콘 별칭 맵 ---
+  async getDcconAliasMap(): Promise<DcconAliasMap> {
+    const defaultValue: DcconAliasMap = {};
+    const value = await this.getData<unknown>(DCCON_ALIAS_MAP_KEY, defaultValue);
+    return sanitizeDcconAliasMap(value);
+  },
+
+  async saveDcconAliasMap(aliasMap: DcconAliasMap): Promise<void> {
+    try {
+      await this.setData(DCCON_ALIAS_MAP_KEY, sanitizeDcconAliasMap(aliasMap));
+    } catch (error) {
+      console.error('Failed to save DcconAliasMap:', error);
+    }
+  },
+
+  // --- 디시콘 별칭 기능 ON/OFF ---
+  async getDcconAliasEnabled(): Promise<boolean> {
+    const defaultValue = true;
+    return await this.getData(DCCON_ALIAS_ENABLED_KEY, defaultValue);
+  },
+
+  async saveDcconAliasEnabled(enabled: boolean): Promise<void> {
+    try {
+      await this.setData(DCCON_ALIAS_ENABLED_KEY, enabled);
+    } catch (error) {
+      console.error('Failed to save dcconAliasEnabled:', error);
     }
   },
 };

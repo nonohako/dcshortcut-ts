@@ -16,7 +16,7 @@ export const FAVORITE_GALLERIES_KEY = 'dcinside_favorite_galleries';
 export const ACTIVE_FAVORITES_PROFILE_KEY = 'dcinside_active_favorites_profile';
 
 /**
- * @description 페이지 이동 방식을 저장하는 storage 키 ('ajax' 또는 'full')
+ * @description 페이지 이동 방식을 저장하는 storage 키 ('ajax', 'full', 'infinite')
  */
 export const PAGE_NAVIGATION_MODE_KEY = 'dcinside_page_navigation_mode';
 
@@ -34,6 +34,16 @@ export const MACRO_X_RUNNING_KEY = 'dcinside_macro_x_running';
  * @description 매크로 실행 간격을 저장하는 storage 키
  */
 export const MACRO_INTERVAL_KEY = 'dcinside_macro_interval';
+
+/**
+ * @description 디시콘 별칭 맵을 저장하는 storage 키
+ */
+export const DCCON_ALIAS_MAP_KEY = 'dcinside_dccon_alias_map';
+
+/**
+ * @description 디시콘 별칭 기능 활성화 여부를 저장하는 storage 키
+ */
+export const DCCON_ALIAS_ENABLED_KEY = 'dcinside_dccon_alias_enabled';
 
 /**
  * @description 'A/S' 단축키로 전체 페이지 로드 시 스크롤 위치 조정을 위한 sessionStorage 키
