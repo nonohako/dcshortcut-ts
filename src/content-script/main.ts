@@ -71,6 +71,7 @@ function isPageNavigationMode(value: unknown): value is PageNavigationMode {
 
 let myTabId: number | null = null;
 let knownLeaderId: number | null = null;
+let shouldRunImmediateRefreshOnNextStart = false;
 
 // =================================================================
 // Vue & Pinia Initialization (Vue 및 Pinia 초기화)
@@ -257,6 +258,18 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     case 'leaderUpdate':
       const { leaderTabId } = message as LeaderUpdateMessage;
       console.log(`[LeaderUpdate] 새 리더 정보 수신: ${leaderTabId}. (내 탭 ID: ${myTabId})`);
+
+      const wasLeader = myTabId !== null && knownLeaderId === myTabId;
+      const becameLeader = myTabId !== null && leaderTabId === myTabId;
+      if (
+        settingsStore.pauseOnInactiveEnabled &&
+        !settingsStore.autoRefreshAllTabsEnabled &&
+        !wasLeader &&
+        becameLeader
+      ) {
+        shouldRunImmediateRefreshOnNextStart = true;
+      }
+
       knownLeaderId = leaderTabId;
       handleAutoRefresherState();
       sendResponse({ success: true });
@@ -289,9 +302,11 @@ function handleAutoRefresherState(): void {
   );
 
   if (shouldStart) {
-    AutoRefresher.start();
+    AutoRefresher.start(shouldRunImmediateRefreshOnNextStart);
+    shouldRunImmediateRefreshOnNextStart = false;
   } else {
     AutoRefresher.stop();
+    shouldRunImmediateRefreshOnNextStart = false;
   }
 }
 

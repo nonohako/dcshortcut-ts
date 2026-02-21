@@ -29,7 +29,7 @@ interface AutoRefresherType {
   abortController: AbortController | null;
   generationId: number;
   init(settingsStore: SettingsStore, postsModule: PostsModule, eventsModule: EventsModule): void;
-  start(): void;
+  start(runImmediately?: boolean): void;
   stop(): void;
   scheduleNextCheck(currentGenerationId: number): void;
   restoreOriginalTitle(): void;
@@ -64,14 +64,22 @@ const AutoRefresher: AutoRefresherType = {
     console.log('[AutoRefresher] 초기화 완료.');
   },
 
-  start() {
-    if (this.timerId || !this.settingsStore?.autoRefreshEnabled) return;
+  start(runImmediately = false) {
+    if (this.timerId || this.abortController || !this.settingsStore?.autoRefreshEnabled) return;
 
     this.generationId = Date.now();
     this.abortController = new AbortController();
     this.restoreOriginalTitle();
 
     console.log('[AutoRefresher] 자동 새로고침을 시작합니다.');
+    if (runImmediately) {
+      console.log('[AutoRefresher] 탭 활성 복귀 감지: 즉시 새 글 확인을 실행합니다.');
+      this.timerId = window.setTimeout(() => {
+        this.checkNewPosts(this.generationId);
+      }, 0);
+      return;
+    }
+
     this.scheduleNextCheck(this.generationId);
   },
 

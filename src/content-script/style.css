@@ -146,3 +146,17 @@ table.gall_list.empty tbody td {
   text-overflow: ellipsis;
   width: 100%;
 }
+
+.dc-shortcut-dccon-popup-preview {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f5f7fb;
+  border: 1px solid #e5e9f1;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #2a3140;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

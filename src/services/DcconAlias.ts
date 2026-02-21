@@ -34,12 +34,16 @@ const POPUP_LIST_CLASS_NAME = 'dc-shortcut-dccon-popup-list';
 const POPUP_CELL_CLASS_NAME = 'dc-shortcut-dccon-popup-cell';
 const POPUP_BUTTON_CLASS_NAME = 'dc-shortcut-dccon-popup-button';
 const POPUP_BUTTON_SELECTED_CLASS_NAME = 'is-selected';
+const POPUP_PREVIEW_CLASS_NAME = 'dc-shortcut-dccon-popup-preview';
+// Keep this in sync with .dc-shortcut-dccon-popup-list grid columns in style.css.
+const POPUP_GRID_COLUMN_COUNT = 6;
 
 let isInitialized = false;
 let aliasMap: DcconAliasMap = {};
 let groupedAliases: AliasPopupTarget[] = [];
 let popupElement: HTMLDivElement | null = null;
 let popupListElement: HTMLUListElement | null = null;
+let popupPreviewElement: HTMLDivElement | null = null;
 let activeSuggestionState: AliasSuggestionState | null = null;
 let repositionRafId: number | null = null;
 let dcconAliasEnabled = true;
@@ -282,7 +286,7 @@ function extractAliasTokenContext(textarea: HTMLTextAreaElement): AliasTokenCont
 }
 
 function ensurePopup(): void {
-  if (popupElement && popupListElement) return;
+  if (popupElement && popupListElement && popupPreviewElement) return;
 
   popupElement = document.createElement('div');
   popupElement.className = POPUP_CLASS_NAME;
@@ -293,6 +297,12 @@ function ensurePopup(): void {
   popupListElement = document.createElement('ul');
   popupListElement.className = POPUP_LIST_CLASS_NAME;
   popupElement.appendChild(popupListElement);
+
+  popupPreviewElement = document.createElement('div');
+  popupPreviewElement.className = POPUP_PREVIEW_CLASS_NAME;
+  popupPreviewElement.style.display = 'none';
+  popupPreviewElement.setAttribute('aria-live', 'polite');
+  popupElement.appendChild(popupPreviewElement);
 
   popupElement.addEventListener('mousedown', (event) => {
     event.preventDefault();
@@ -312,9 +322,8 @@ function ensurePopup(): void {
   popupElement.addEventListener('contextmenu', (event) => {
     if (!dcconAliasEnabled || event.shiftKey || !activeSuggestionState) return;
 
-    const target = event.target as HTMLElement;
-    if (!target.closest('img')) return;
-
+    const target = event.target;
+    if (!(target instanceof Element)) return;
     const itemButton = target.closest<HTMLButtonElement>('button[data-index]');
     if (!itemButton) return;
 
@@ -342,8 +351,29 @@ function ensurePopup(): void {
   document.body.appendChild(popupElement);
 }
 
+function updatePopupAliasPreview(index: number | null): void {
+  if (!popupPreviewElement) return;
+
+  if (!activeSuggestionState || index === null) {
+    popupPreviewElement.style.display = 'none';
+    popupPreviewElement.textContent = '';
+    return;
+  }
+
+  const matchedTarget = activeSuggestionState.matches[index];
+  if (!matchedTarget) {
+    popupPreviewElement.style.display = 'none';
+    popupPreviewElement.textContent = '';
+    return;
+  }
+
+  popupPreviewElement.textContent = `별칭: ${matchedTarget.aliases.map((alias) => `@${alias}`).join(', ')}`;
+  popupPreviewElement.style.display = 'block';
+}
+
 function hideSuggestions(): void {
   activeSuggestionState = null;
+  updatePopupAliasPreview(null);
   if (popupElement) {
     popupElement.style.display = 'none';
   }
@@ -372,13 +402,12 @@ function renderSuggestions(): void {
         : POPUP_BUTTON_CLASS_NAME;
 
     const aliasTooltip = target.aliases.map((alias) => `@${alias}`).join(', ');
-    button.title = aliasTooltip;
+    button.setAttribute('aria-label', aliasTooltip);
 
     if (target.imageUrl) {
       const img = document.createElement('img');
       img.src = target.imageUrl;
       img.alt = target.alias;
-      img.title = aliasTooltip;
       img.loading = 'lazy';
       button.appendChild(img);
     }
@@ -391,7 +420,23 @@ function renderSuggestions(): void {
     listElement.appendChild(li);
   });
 
+  listElement.onmouseover = (event: MouseEvent): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const itemButton = target.closest<HTMLButtonElement>('button[data-index]');
+    if (!itemButton) return;
+    const index = Number(itemButton.dataset.index);
+    if (!Number.isFinite(index)) return;
+    updatePopupAliasPreview(index);
+  };
+
+  listElement.onmouseleave = (): void => {
+    if (!activeSuggestionState) return;
+    updatePopupAliasPreview(activeSuggestionState.selectedIndex);
+  };
+
   popupElement.style.display = 'block';
+  updatePopupAliasPreview(state.selectedIndex);
   schedulePopupReposition();
   ensureSelectedSuggestionVisible();
 }
@@ -481,6 +526,24 @@ function moveSuggestionSelection(step: number): void {
   if (!activeSuggestionState || activeSuggestionState.matches.length === 0) return;
   const size = activeSuggestionState.matches.length;
   const nextIndex = (activeSuggestionState.selectedIndex + step + size) % size;
+  activeSuggestionState.selectedIndex = nextIndex;
+  renderSuggestions();
+}
+
+function moveSuggestionSelectionByRow(stepRows: number): void {
+  if (!activeSuggestionState || activeSuggestionState.matches.length === 0) return;
+
+  const size = activeSuggestionState.matches.length;
+  const columnCount = Math.max(1, POPUP_GRID_COLUMN_COUNT);
+  const rowCount = Math.ceil(size / columnCount);
+  const currentIndex = activeSuggestionState.selectedIndex;
+  const currentColumn = currentIndex % columnCount;
+  const currentRow = Math.floor(currentIndex / columnCount);
+
+  let nextRow = (currentRow + stepRows) % rowCount;
+  if (nextRow < 0) nextRow += rowCount;
+
+  const nextIndex = Math.min(size - 1, nextRow * columnCount + currentColumn);
   activeSuggestionState.selectedIndex = nextIndex;
   renderSuggestions();
 }
@@ -772,11 +835,23 @@ function handleKeydown(event: KeyboardEvent): void {
 
   if (event.key === 'ArrowDown') {
     preventEventPropagation(event);
-    moveSuggestionSelection(1);
+    moveSuggestionSelectionByRow(1);
     return;
   }
 
   if (event.key === 'ArrowUp') {
+    preventEventPropagation(event);
+    moveSuggestionSelectionByRow(-1);
+    return;
+  }
+
+  if (event.key === 'ArrowRight') {
+    preventEventPropagation(event);
+    moveSuggestionSelection(1);
+    return;
+  }
+
+  if (event.key === 'ArrowLeft') {
     preventEventPropagation(event);
     moveSuggestionSelection(-1);
     return;
