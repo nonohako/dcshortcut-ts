@@ -202,6 +202,13 @@ function renderFixedShortcuts(): void {
  * DOM 콘텐츠가 모두 로드되면 실행되는 메인 함수.
  */
 document.addEventListener('DOMContentLoaded', async () => {
+  // 0. manifest 버전 표시 (단일 소스: manifest.json)
+  const versionEl = document.getElementById('version-info');
+  if (versionEl && typeof chrome?.runtime?.getManifest === 'function') {
+    const manifest = chrome.runtime.getManifest();
+    versionEl.textContent = manifest.version ? `v${manifest.version}` : '';
+  }
+
   // 1. 단축키 목록 렌더링
   renderFixedShortcuts();
   try {

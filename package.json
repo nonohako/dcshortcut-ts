@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "build:dev": "vue-tsc --noEmit && vite build --mode development",
+    "version:sync": "node scripts/sync-version.mjs",
+    "build": "npm run version:sync && vue-tsc --noEmit && vite build",
+    "build:dev": "npm run version:sync && vue-tsc --noEmit && vite build --mode development",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit"
   },
