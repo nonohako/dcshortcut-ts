@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DCInside ShortCut",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "디시인사이드 단축키 추가, 즐겨찾는 갤러리 단축키 기능",
   "icons": {
     "16": "icons/icon16.png",
