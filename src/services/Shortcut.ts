@@ -60,16 +60,22 @@ interface ModifierState {
   Meta: boolean;
 }
 
+function coerceString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
 function isAsciiPrintableChar(char: string): boolean {
   const code = char.charCodeAt(0);
   return code >= 33 && code <= 126;
 }
 
 function normalizeKeyToken(rawKey: string): string {
-  if (DISALLOWED_KEY_TOKENS.has(rawKey)) return '';
-  if (/[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(rawKey)) return '';
+  const safeRawKey = coerceString(rawKey);
+  if (!safeRawKey) return '';
+  if (DISALLOWED_KEY_TOKENS.has(safeRawKey)) return '';
+  if (/[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(safeRawKey)) return '';
 
-  const trimmed = rawKey.trim();
+  const trimmed = safeRawKey.trim();
   if (!trimmed) return '';
 
   const mapped = KEY_NORMALIZATION_MAP[trimmed.toLowerCase()];
@@ -105,7 +111,7 @@ function formatShortcutCombo(modifiers: ModifierState, keyToken: string): string
 }
 
 export function normalizeShortcutCombo(combo: string): string | null {
-  const trimmed = combo.trim();
+  const trimmed = coerceString(combo).trim();
   if (!trimmed) return null;
 
   const tokens = trimmed

@@ -228,7 +228,8 @@ const AutoRefresher: AutoRefresherType = {
         ) {
           const numCell = row.querySelector('td.gall_num');
           if (numCell && !numCell.querySelector('.sp_img.crt_icon')) {
-            const num = parseInt(numCell.textContent?.trim().replace(/\[.*?\]\s*/, '') ?? '0', 10);
+            const numText = (numCell.textContent ?? '').trim().replace(/\[.*?\]\s*/, '');
+            const num = parseInt(numText || '0', 10);
             if (!isNaN(num) && num > latestPostNumber) {
               latestPostNumber = num;
             }
@@ -253,13 +254,11 @@ const AutoRefresher: AutoRefresherType = {
             row.querySelector('td.gall_subject')
           )
         ) {
-          const num = parseInt(
-            row
-              .querySelector('td.gall_num')!
-              .textContent!.trim()
-              .replace(/\[.*?\]\s*/, ''),
-            10
-          );
+          const numCell = row.querySelector('td.gall_num');
+          if (!numCell) return;
+
+          const numText = (numCell.textContent ?? '').trim().replace(/\[.*?\]\s*/, '');
+          const num = parseInt(numText, 10);
           if (num > latestPostNumber) {
             newPostRows.push(row as HTMLTableRowElement);
           }

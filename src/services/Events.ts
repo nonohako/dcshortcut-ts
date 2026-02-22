@@ -682,7 +682,7 @@ const Events: EventsModuleType = {
             row.querySelector('td.gall_subject') as HTMLElement
           )
         ) {
-          const numText = numCell.textContent!.trim().replace(/\[.*?\]\s*/, '');
+          const numText = (numCell.textContent ?? '').trim().replace(/\[.*?\]\s*/, '');
           const num = parseInt(numText, 10);
           const linkElement = titleCell.querySelector<HTMLAnchorElement>('a:first-child');
           let link: string | null = null;

@@ -76,11 +76,16 @@ const storageChangeListener = (
   }
 };
 
+function safeTrim(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function normalizeAliasKey(alias: string): string {
-  return alias.trim().toLocaleLowerCase();
+  return safeTrim(alias).toLocaleLowerCase();
 }
 
 function sanitizeSingleAlias(rawAlias: string): string {
+  if (typeof rawAlias !== 'string') return '';
   const alias = rawAlias.replace(/^@+/, '').trim();
   if (!alias || /\s/.test(alias)) return '';
   return alias.slice(0, MAX_ALIAS_LENGTH);
@@ -90,21 +95,23 @@ function parseAliasListInput(rawInput: string): string[] {
   const dedupedAliases: string[] = [];
   const seen = new Set<string>();
 
-  rawInput.split(',').forEach((token) => {
-    const alias = sanitizeSingleAlias(token);
-    if (!alias) return;
+  safeTrim(rawInput)
+    .split(',')
+    .forEach((token) => {
+      const alias = sanitizeSingleAlias(token);
+      if (!alias) return;
 
-    const normalized = normalizeAliasKey(alias);
-    if (seen.has(normalized)) return;
-    seen.add(normalized);
-    dedupedAliases.push(alias);
-  });
+      const normalized = normalizeAliasKey(alias);
+      if (seen.has(normalized)) return;
+      seen.add(normalized);
+      dedupedAliases.push(alias);
+    });
 
   return dedupedAliases;
 }
 
 function getAliasSortBucket(alias: string): number {
-  const firstChar = alias.trim().charAt(0);
+  const firstChar = safeTrim(alias).charAt(0);
   if (!firstChar) return 9;
   if (/^[0-9]$/.test(firstChar)) return 0;
   if (/^[A-Za-z]$/.test(firstChar)) return 1;

@@ -373,8 +373,10 @@ const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(()
 
 const getShortcutLabel = (action: ShortcutLabelKey): string => dynamicLabels.value[action] || action;
 
-const normalizeAliasKey = (alias: string): string => alias.trim().toLocaleLowerCase();
+const safeTrim = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+const normalizeAliasKey = (alias: string): string => safeTrim(alias).toLocaleLowerCase();
 const sanitizeSingleAliasInput = (rawAlias: string): string => {
+  if (typeof rawAlias !== 'string') return '';
   const alias = rawAlias.replace(/^@+/, '').trim();
   if (!alias || /\s/.test(alias)) return '';
   return alias.slice(0, 5);
@@ -383,20 +385,22 @@ const parseAliasListInput = (rawInput: string): string[] => {
   const aliases: string[] = [];
   const seen = new Set<string>();
 
-  rawInput.split(',').forEach((token) => {
-    const alias = sanitizeSingleAliasInput(token);
-    if (!alias) return;
+  safeTrim(rawInput)
+    .split(',')
+    .forEach((token) => {
+      const alias = sanitizeSingleAliasInput(token);
+      if (!alias) return;
 
-    const normalized = normalizeAliasKey(alias);
-    if (seen.has(normalized)) return;
-    seen.add(normalized);
-    aliases.push(alias);
-  });
+      const normalized = normalizeAliasKey(alias);
+      if (seen.has(normalized)) return;
+      seen.add(normalized);
+      aliases.push(alias);
+    });
 
   return aliases;
 };
 const getAliasSortBucket = (alias: string): number => {
-  const firstChar = alias.trim().charAt(0);
+  const firstChar = safeTrim(alias).charAt(0);
   if (!firstChar) return 9;
   if (/^[0-9]$/.test(firstChar)) return 0;
   if (/^[A-Za-z]$/.test(firstChar)) return 1;

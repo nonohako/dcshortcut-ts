@@ -227,7 +227,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
    */
   async function addProfile(profileName: string): Promise<void> {
     await ensureProfilesLoaded();
-    const trimmedName = profileName.trim();
+    const trimmedName = typeof profileName === 'string' ? profileName.trim() : '';
     if (!trimmedName) {
       throw new Error('프로필 이름은 비워둘 수 없습니다.');
     }
@@ -269,7 +269,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
    */
   async function renameProfile(oldName: string, newName: string): Promise<void> {
     await ensureProfilesLoaded();
-    const trimmedNewName = newName.trim();
+    const trimmedNewName = typeof newName === 'string' ? newName.trim() : '';
     if (!trimmedNewName) {
       throw new Error('프로필 이름은 비워둘 수 없습니다.');
     }
