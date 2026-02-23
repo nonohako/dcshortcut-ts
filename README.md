@@ -16,6 +16,17 @@
 - 댓글 입력창에서 `@별칭`으로 디시콘 빠른 등록
 - 설정 백업/복원 및 앱 초기화
 
+## 스크린샷
+
+> 실제 기능 스크린샷은 `docs/screenshots` 폴더에 순차적으로 추가 예정입니다.
+
+| 화면 | 미리보기 |
+| --- | --- |
+| 확장 프로그램 아이콘 | ![DCInside ShortCut Icon](./icons/icon128.png) |
+| 팝업 화면 | `즐겨찾기.png` |
+| 단축키/즐겨찾기 설정 화면 | `docs/screenshots/shortcut-manager.png` |
+| 디시콘 화면 | `docs/screenshots/디시콘.webp` |
+
 ## 단축키
 
 ### 커스텀 가능
