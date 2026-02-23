@@ -1,7 +1,7 @@
 # DCInside ShortCut
 
-디시인사이드 사용을 더 빠르게 만드는 브라우저 확장 프로그램입니다.  
-자주 쓰는 동작을 단축키로 실행하고, 즐겨찾기/자동 넘김/디시콘 별칭 기능으로 반복 작업을 줄일 수 있습니다.
+디시인사이드를 키보드만으로 이용하는 것을 지향하는 프로젝트입니다.
+자주 쓰는 동작을 단축키로 실행하고, 즐겨찾는 갤러리 이동 단축키/게시글 탐색 단축키/디시콘 즐겨찾기 기능을 지원합니다.
 
 ![Version](https://img.shields.io/badge/version-0.3.2-2f855a)
 ![License](https://img.shields.io/badge/license-MIT-1f6feb)
@@ -12,9 +12,9 @@
 
 - 커스터마이징 가능한 단축키
 - 갤러리 즐겨찾기 빠른 이동/등록
-- 다음 글/이전 글 자동 넘김
-- 댓글 입력창에서 `@별칭`으로 디시콘 빠른 등록
-- 설정 백업/복원 및 앱 초기화
+- 다음 글/이전 글 이동 단축키
+- 댓글 입력창에서 `@디시콘 이름`으로 디시콘 빠른 사용
+- 갤러리 자동 새로고침 기능 지원
 
 ## 스크린샷
 
@@ -22,10 +22,9 @@
 
 | 화면 | 미리보기 |
 | --- | --- |
-| 확장 프로그램 아이콘 | ![DCInside ShortCut Icon](./icons/icon128.png) |
-| 팝업 화면 | ![팝업 화면](./docs/screenshots/즐겨찾기.png) |
-| 단축키/즐겨찾기 설정 화면 | ![단축키/즐겨찾기 설정 화면](./docs/screenshots/shortcut-manager.png) |
-| 디시콘 화면 | ![디시콘 화면](./docs/screenshots/디시콘.webp) |
+| 갤러리 즐겨찾기 | ![팝업 화면](./docs/screenshots/즐겨찾기.png) |
+| 단축키/설정 | ![단축키/즐겨찾기 설정 화면](./docs/screenshots/shortcut-manager.png) |
+| 디시콘 단축키 | ![디시콘 화면](./docs/screenshots/디시콘.webp) |
 
 ## 단축키
 
@@ -49,12 +48,7 @@
 | `V` | 갤러리 내부 검색 |
 | `[` | 즐겨찾기 이전 프로필 |
 | `]` | 즐겨찾기 다음 프로필 |
-
-### 고정 단축키
-
-| 키 | 동작 |
-| --- | --- |
-| `Alt + \`` | 갤러리 즐겨찾기 열기 |
+| ``Alt + \`` | 갤러리 즐겨찾기 열기 |
 | `Alt + 0~9` | 갤러리 즐겨찾기 이동/등록 |
 | `Alt + W` | 글 등록 |
 | `Alt + D` | 댓글 등록 |
@@ -96,7 +90,6 @@ npm run build:dev
 - Vue 3
 - TypeScript
 - Vite
-- Manifest V3
 
 ## 로드맵
 
@@ -105,7 +98,7 @@ npm run build:dev
 
 ## 문의
 
-- nonohako 갤로그 방명록 또는 디스코드
+- nonohako [갤로그 방명록](https://gallog.dcinside.com/nonohako/guestbook)
 
 ## License
 
