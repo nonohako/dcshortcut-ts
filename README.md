@@ -18,7 +18,7 @@
 
 ## 스크린샷
 
-| 화면 | 미리보기 |
+| 기능 | 미리보기 |
 | --- | --- |
 | 갤러리 <br> 북마크 | ![갤러리 즐겨찾기](./docs/screenshots/즐겨찾기.png) |
 | 단축키 <br> 설정 | ![단축키/설정](./docs/screenshots/shortcut-manager.png) |
