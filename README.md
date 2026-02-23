@@ -18,13 +18,11 @@
 
 ## 스크린샷
 
-> 캡처 이미지는 `docs/screenshots` 경로를 기준으로 연결되어 있습니다.
-
 | 화면 | 미리보기 |
 | --- | --- |
-| 갤러리 즐겨찾기 | ![팝업 화면](./docs/screenshots/즐겨찾기.png) |
-| 단축키/설정 | ![단축키/즐겨찾기 설정 화면](./docs/screenshots/shortcut-manager.png) |
-| 디시콘 단축키 | ![디시콘 화면](./docs/screenshots/디시콘.webp) |
+| 갤러리 <br> 북마크 | ![갤러리 즐겨찾기](./docs/screenshots/즐겨찾기.png) |
+| 단축키 <br> 설정 | ![단축키/설정](./docs/screenshots/shortcut-manager.png) |
+| 디시콘 <br >단축키 | ![디시콘 단축키](./docs/screenshots/디시콘.webp) |
 
 ## 단축키
 
@@ -56,7 +54,11 @@
 | `` ` `` 또는 `.` + 숫자 | 게시글 라벨 번호로 이동 |
 | `0~9` | 게시글 라벨 번호 바로가기 |
 
-## 설치 방법 (개발자 모드)
+## 설치 방법
+
+### 확장프로그램 설치
+- [Chrome Web Store](https://chromewebstore.google.com/detail/dcinside-shortcut/egojoffmbccdmdllejmaahbochbfdhbh?authuser=0&hl=ko)
+### 직접 빌드
 
 1. 저장소를 클론합니다.
 2. 의존성을 설치합니다.
@@ -75,16 +77,6 @@ npm run build
 5. `개발자 모드`를 켜고 `압축해제된 확장 프로그램을 로드`를 선택합니다.
 6. 프로젝트의 `dist` 폴더를 선택합니다.
 
-## 개발
-
-```bash
-npm run type-check
-npm run build:dev
-```
-
-- 빌드 결과물은 `dist`에 생성됩니다.
-- 버전은 `manifest.json`과 동기화됩니다 (`npm run version:sync`).
-
 ## 기술 스택
 
 - Vue 3
@@ -93,12 +85,14 @@ npm run build:dev
 
 ## 로드맵
 
-- 대왕콘/더블콘 지원
-- 다크모드 지원
+- 대왕콘/더블콘
+- 즐겨쓰는 디시콘 단축키
+- 다크모드
+- 파이어폭스 지원
 
 ## 문의
 
-- nonohako [갤로그 방명록](https://gallog.dcinside.com/nonohako/guestbook)
+- [nonohako 갤로그 방명록](https://gallog.dcinside.com/nonohako/guestbook)
 
 ## License
 
