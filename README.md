@@ -18,14 +18,14 @@
 
 ## 스크린샷
 
-> 실제 기능 스크린샷은 `docs/screenshots` 폴더에 순차적으로 추가 예정입니다.
+> 캡처 이미지는 `docs/screenshots` 경로를 기준으로 연결되어 있습니다.
 
 | 화면 | 미리보기 |
 | --- | --- |
 | 확장 프로그램 아이콘 | ![DCInside ShortCut Icon](./icons/icon128.png) |
-| 팝업 화면 | `즐겨찾기.png` |
-| 단축키/즐겨찾기 설정 화면 | `docs/screenshots/shortcut-manager.png` |
-| 디시콘 화면 | `docs/screenshots/디시콘.webp` |
+| 팝업 화면 | ![팝업 화면](./docs/screenshots/즐겨찾기.png) |
+| 단축키/즐겨찾기 설정 화면 | ![단축키/즐겨찾기 설정 화면](./docs/screenshots/shortcut-manager.png) |
+| 디시콘 화면 | ![디시콘 화면](./docs/screenshots/디시콘.webp) |
 
 ## 단축키
 
