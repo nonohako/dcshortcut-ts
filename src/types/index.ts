@@ -28,6 +28,12 @@ export type FavoriteProfiles = Record<string, FavoriteGalleries>;
 export type PageNavigationMode = 'ajax' | 'full' | 'infinite';
 
 /**
+ * @type ThemeMode
+ * @description 확장 UI 테마 모드.
+ */
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+/**
  * @interface DcconAliasTarget
  * @description 사용자 지정 디시콘 별칭에 매핑되는 대상 정보.
  */

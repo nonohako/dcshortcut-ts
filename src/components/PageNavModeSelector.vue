@@ -93,7 +93,7 @@
   .page-nav-title {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #495057;
+    color: var(--dc-color-text-secondary);
     margin-bottom: 12px;
   }
   
@@ -109,18 +109,18 @@
     align-items: center;
     cursor: pointer;
     font-size: 0.9rem;
-    color: #343a40;
+    color: var(--dc-color-text-primary);
     padding: 6px 0;
     transition: color 0.15s ease;
   }
   
   .page-nav-label:hover .mode-text {
-    color: #0d6efd;
+    color: var(--dc-color-accent);
   }
   
   .page-nav-label input[type="radio"] {
     margin-right: 8px;
-    accent-color: #0d6efd;
+    accent-color: var(--dc-color-accent);
     transform: scale(1.1);
     flex-shrink: 0;
   }

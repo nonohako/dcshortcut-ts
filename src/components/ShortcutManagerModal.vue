@@ -79,6 +79,19 @@
       <div v-show="activeTab === 'advanced'" class="tab-pane">
         <div class="shortcut-section">
           <div class="shortcut-section-title">즐겨찾기</div>
+          <div class="shortcut-interval-setting theme-mode-setting">
+            <label for="theme-mode-select" class="interval-label">화면 테마</label>
+            <select
+              id="theme-mode-select"
+              class="theme-mode-select"
+              :value="settingsStore.themeMode"
+              @change="updateThemeMode"
+            >
+              <option value="system">시스템 기본값</option>
+              <option value="dark">다크</option>
+              <option value="light">라이트</option>
+            </select>
+          </div>
           <ShortcutToggle label="ALT + 숫자 - 해당 번호 즐겨찾기로 바로 이동" :enabled="settingsStore.altNumberEnabled"
             storageKeyEnabled="altNumberEnabled" @update:enabled="updateAltNumberEnabled" :isKeyEditable="false" />
           <ShortcutToggle label="숫자키 - 라벨 글 이동" :enabled="settingsStore.numberNavigationEnabled"
@@ -259,7 +272,7 @@ import { ref, onMounted, onUnmounted, computed, nextTick, type Ref, type Compute
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import type { FavoriteGalleryInfo, FavoriteGalleries, FavoriteProfiles } from '@/stores/favoritesStore';
-import type { DcconAliasMap, DcconAliasTarget } from '@/types';
+import type { DcconAliasMap, DcconAliasTarget, ThemeMode } from '@/types';
 import { useUiStore } from '@/stores/uiStore';
 import UI from '@/services/UI';
 import Posts from '@/services/Posts';
@@ -664,12 +677,30 @@ const debounce = (callback: () => void, delay: number = 500): void => {
   debounceTimer = window.setTimeout(callback, delay);
 };
 
+const THEME_MODE_LABELS: Record<ThemeMode, string> = {
+  system: '시스템 기본값',
+  dark: '다크',
+  light: '라이트',
+};
+
 const updatePageNavMode = async (mode: 'ajax' | 'full' | 'infinite'): Promise<void> => {
   await settingsStore.savePageNavigationMode(mode);
   Events.setPageNavigationMode(mode);
   const modeLabel =
     mode === 'ajax' ? '빠른 이동' : mode === 'full' ? '기본 이동' : '무한 스크롤';
   UI.showAlert(`페이지 이동 방식이 '${modeLabel}' 모드로 변경되었습니다.`);
+};
+
+const updateThemeMode = async (event: Event): Promise<void> => {
+  const target = event.target as HTMLSelectElement;
+  const mode = target.value as ThemeMode;
+  if (mode !== 'system' && mode !== 'dark' && mode !== 'light') {
+    target.value = settingsStore.themeMode;
+    return;
+  }
+
+  await settingsStore.saveThemeMode(mode);
+  UI.showAlert(`화면 테마가 '${THEME_MODE_LABELS[mode]}'(으)로 변경되었습니다.`);
 };
 
 const updateAltNumberEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
@@ -1050,17 +1081,17 @@ onUnmounted(() => {
   position: fixed;
   top: 50%;
   left: 50%;
-  background-color: #f8f9fa;
+  background-color: var(--dc-color-bg);
   padding: 24px;
   border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--dc-shadow-medium);
   z-index: 10001;
   width: 500px;
   height: 800px;
   display: flex;
   flex-direction: column;
   font-family: "Noto Sans CJK KR", "NanumGothic", sans-serif;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--dc-color-border);
   transition: opacity 0.25s ease-out, transform 0.25s ease-out;
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.95);
@@ -1075,10 +1106,10 @@ onUnmounted(() => {
 .shortcut-title {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #212529;
+  color: var(--dc-color-text-primary);
   margin: 0 0 16px 0;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--dc-color-border-soft);
   flex-shrink: 0;
 }
 
@@ -1087,7 +1118,7 @@ onUnmounted(() => {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 4px;
   margin-bottom: 16px;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid var(--dc-color-border);
   padding-bottom: 6px;
   flex-shrink: 0;
   align-items: end;
@@ -1101,7 +1132,7 @@ onUnmounted(() => {
   background-color: transparent;
   font-size: 0.83rem;
   font-weight: 500;
-  color: #6c757d;
+  color: var(--dc-color-text-muted);
   margin-bottom: 0;
   border-bottom: 2px solid transparent;
   transition: color 0.15s ease-in-out, border-color 0.15s ease-in-out;
@@ -1112,12 +1143,12 @@ onUnmounted(() => {
 }
 
 .tab-button:hover {
-  color: #0d6efd;
+  color: var(--dc-color-accent);
 }
 
 .tab-button.active {
-  color: #0d6efd;
-  border-bottom-color: #0d6efd;
+  color: var(--dc-color-accent);
+  border-bottom-color: var(--dc-color-accent);
   font-weight: 600;
 }
 
@@ -1127,12 +1158,12 @@ onUnmounted(() => {
 }
 
 .shortcut-section {
-  background-color: #ffffff;
+  background-color: var(--dc-color-surface);
   padding: 16px;
   border-radius: 8px;
   margin-bottom: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e9ecef;
+  box-shadow: var(--dc-shadow-soft);
+  border: 1px solid var(--dc-color-border-soft);
 }
 
 .tab-pane>.shortcut-section:last-of-type {
@@ -1142,7 +1173,7 @@ onUnmounted(() => {
 .shortcut-section-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #495057;
+  color: var(--dc-color-text-secondary);
   margin-bottom: 12px;
 }
 
@@ -1153,14 +1184,14 @@ onUnmounted(() => {
   margin-top: 16px;
   padding: 12px 10px;
   border-radius: 6px;
-  border: 1px solid #e9ecef;
-  background-color: #fff;
+  border: 1px solid var(--dc-color-border-soft);
+  background-color: var(--dc-color-surface);
 }
 
 .interval-label {
   font-size: 0.9rem;
   font-weight: 500;
-  color: #343a40;
+  color: var(--dc-color-text-primary);
   display: inline-flex;
   align-items: center;
 }
@@ -1168,27 +1199,49 @@ onUnmounted(() => {
 .interval-input {
   width: 80px;
   padding: 8px 10px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--dc-color-border-strong);
   border-radius: 6px;
   font-size: 0.9rem;
   text-align: right;
+  background: var(--dc-color-surface);
+  color: var(--dc-color-text-primary);
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .interval-input:focus {
-  border-color: #0d6efd;
-  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+  border-color: var(--dc-color-accent);
+  box-shadow: var(--dc-focus-ring);
 }
 
 .color-input {
   width: 52px;
   height: 34px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--dc-color-border-strong);
   border-radius: 6px;
   padding: 2px;
-  background: #fff;
+  background: var(--dc-color-surface);
   cursor: pointer;
+}
+
+.theme-mode-setting {
+  margin-bottom: 10px;
+}
+
+.theme-mode-select {
+  min-width: 140px;
+  border: 1px solid var(--dc-color-border-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  background: var(--dc-color-surface);
+  color: var(--dc-color-text-primary);
+  outline: none;
+}
+
+.theme-mode-select:focus {
+  border-color: var(--dc-color-accent);
+  box-shadow: var(--dc-focus-ring);
 }
 
 .backup-restore-buttons {
@@ -1204,7 +1257,7 @@ onUnmounted(() => {
 
 .backup-restore-note {
   font-size: 0.8rem;
-  color: #6c757d;
+  color: var(--dc-color-text-muted);
   text-align: center;
   margin-top: 8px;
 }
@@ -1213,7 +1266,7 @@ onUnmounted(() => {
   display: block;
   width: 100%;
   padding: 10px 16px;
-  color: #ffffff;
+  color: var(--dc-color-tooltip-text);
   border: none;
   border-radius: 8px;
   font-size: 0.95rem;
@@ -1221,11 +1274,11 @@ onUnmounted(() => {
   cursor: pointer;
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
   text-align: center;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--dc-shadow-soft);
 }
 
 .dc-button:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--dc-shadow-medium);
 }
 
 .dc-button:active {
@@ -1240,46 +1293,46 @@ onUnmounted(() => {
 }
 
 .close-button-bottom {
-  background-color: #6c757d;
+  background-color: var(--dc-color-text-muted);
   margin-top: 20px;
   flex-shrink: 0;
 }
 
 .close-button-bottom:hover {
-  background-color: #5a6268;
+  background-color: var(--dc-color-text-secondary);
 }
 
 .dc-button-blue {
-  background-color: #0d6efd;
+  background-color: var(--dc-color-accent);
 }
 
 .dc-button-blue:hover {
-  background-color: #0b5ed7;
+  background-color: var(--dc-color-accent-hover);
 }
 
 .dc-button-orange {
-  background-color: #ffc107;
-  color: #000;
+  background-color: var(--dc-color-orange);
+  color: var(--dc-color-text-primary);
 }
 
 .dc-button-orange:hover {
-  background-color: #ffca2c;
+  background-color: var(--dc-color-orange-hover);
 }
 
 .dc-button-red {
-  background-color: #dc3545;
+  background-color: var(--dc-color-danger-strong);
 }
 
 .dc-button-red:hover:not(:disabled) {
-  background-color: #c82333;
+  background-color: var(--dc-color-danger);
 }
 
 .dc-button-light {
-  background-color: #adb5bd;
+  background-color: var(--dc-color-switch-off);
 }
 
 .dc-button-light:hover {
-  background-color: #949ea8;
+  background-color: var(--dc-color-text-muted);
 }
 
 .shortcut-section> :deep(.shortcut-toggle) {
@@ -1301,7 +1354,7 @@ onUnmounted(() => {
   appearance: none;
   width: 150px;
   height: 8px;
-  background: #e9ecef;
+  background: var(--dc-color-border-soft);
   outline: none;
   border-radius: 4px;
   transition: opacity .2s;
@@ -1312,27 +1365,27 @@ onUnmounted(() => {
   appearance: none;
   width: 18px;
   height: 18px;
-  background: #0d6efd;
+  background: var(--dc-color-accent);
   cursor: pointer;
   border-radius: 50%;
-  border: 2px solid #fff;
+  border: 2px solid var(--dc-color-surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .opacity-slider::-moz-range-thumb {
   width: 18px;
   height: 18px;
-  background: #0d6efd;
+  background: var(--dc-color-accent);
   cursor: pointer;
   border-radius: 50%;
-  border: 2px solid #fff;
+  border: 2px solid var(--dc-color-surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .slider-value {
   font-size: 0.85rem;
   font-weight: 500;
-  color: #495057;
+  color: var(--dc-color-text-secondary);
   min-width: 40px;
   text-align: right;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
@@ -1340,13 +1393,13 @@ onUnmounted(() => {
 
 .shortcut-section-note {
   font-size: 0.85rem;
-  color: #6c757d;
+  color: var(--dc-color-text-muted);
   margin-bottom: 16px;
   line-height: 1.5;
-  background-color: #f8f9fa;
+  background-color: var(--dc-color-bg);
   padding: 10px;
   border-radius: 6px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--dc-color-border-soft);
 }
 
 .dccon-toolbar {
@@ -1376,7 +1429,7 @@ onUnmounted(() => {
 .dccon-enabled-label {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #495057;
+  color: var(--dc-color-text-secondary);
 }
 
 .dccon-switch {
@@ -1396,7 +1449,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   border-radius: 999px;
-  background-color: #adb5bd;
+  background-color: var(--dc-color-switch-off);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
@@ -1409,12 +1462,12 @@ onUnmounted(() => {
   left: 2px;
   top: 2px;
   border-radius: 50%;
-  background-color: #fff;
+  background-color: var(--dc-color-surface);
   transition: transform 0.15s ease;
 }
 
 .dccon-switch input:checked + .dccon-switch-slider {
-  background-color: #0d6efd;
+  background-color: var(--dc-color-accent);
 }
 
 .dccon-switch input:checked + .dccon-switch-slider::before {
@@ -1423,8 +1476,8 @@ onUnmounted(() => {
 
 .alias-empty-state {
   font-size: 0.85rem;
-  color: #6c757d;
-  border: 1px dashed #ced4da;
+  color: var(--dc-color-text-muted);
+  border: 1px dashed var(--dc-color-border-strong);
   border-radius: 6px;
   padding: 10px;
   text-align: center;
@@ -1446,10 +1499,10 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--dc-color-border-soft);
   border-radius: 6px;
   padding: 8px;
-  background: #fff;
+  background: var(--dc-color-surface);
 }
 
 .alias-item-main {
@@ -1463,15 +1516,15 @@ onUnmounted(() => {
   width: 50px;
   height: 50px;
   object-fit: contain;
-  background: #f7f8fa;
+  background: var(--dc-color-surface-subtle);
   border-radius: 4px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--dc-color-border-soft);
   flex-shrink: 0;
 }
 
 .alias-item-aliases {
   font-size: 0.85rem;
-  color: #212529;
+  color: var(--dc-color-text-primary);
   line-height: 1.4;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1485,9 +1538,9 @@ onUnmounted(() => {
 }
 
 .alias-action-button {
-  border: 1px solid #ced4da;
-  background: #fff;
-  color: #495057;
+  border: 1px solid var(--dc-color-border-strong);
+  background: var(--dc-color-surface);
+  color: var(--dc-color-text-secondary);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 0.76rem;
@@ -1507,14 +1560,14 @@ onUnmounted(() => {
 
 .alias-action-button:hover,
 .alias-delete-button:hover {
-  background: #f8f9fa;
+  background: var(--dc-color-bg);
 }
 
 .warning-note {
   font-size: 0.8rem;
-  color: #c0392b;
-  background-color: #fbe9e7;
-  border: 1px solid #ffab91;
+  color: var(--dc-color-warning-text);
+  background-color: var(--dc-color-warning-bg);
+  border: 1px solid var(--dc-color-warning-border);
   border-radius: 6px;
   padding: 10px;
   margin-top: 12px;
@@ -1532,7 +1585,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   z-index: 30;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--dc-color-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1542,23 +1595,23 @@ onUnmounted(() => {
 .reset-dialog {
   width: 100%;
   max-width: 420px;
-  background: #fff;
-  border: 1px solid #dee2e6;
+  background: var(--dc-color-surface);
+  border: 1px solid var(--dc-color-border);
   border-radius: 10px;
   padding: 18px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--dc-shadow-medium);
 }
 
 .reset-dialog-title {
   margin: 0 0 10px;
   font-size: 1rem;
-  color: #212529;
+  color: var(--dc-color-text-primary);
 }
 
 .reset-dialog-message {
   margin: 0 0 12px;
   font-size: 0.9rem;
-  color: #495057;
+  color: var(--dc-color-text-secondary);
   line-height: 1.5;
 }
 
@@ -1568,17 +1621,19 @@ onUnmounted(() => {
   max-width: 220px;
   display: block;
   margin: 0 auto;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--dc-color-border-strong);
   border-radius: 6px;
   padding: 9px 10px;
   font-size: 0.9rem;
+  background: var(--dc-color-surface);
+  color: var(--dc-color-text-primary);
   outline: none;
   text-align: center;
 }
 
 .reset-dialog-input:focus {
-  border-color: #0d6efd;
-  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2);
+  border-color: var(--dc-color-accent);
+  box-shadow: var(--dc-focus-ring);
 }
 
 .reset-dialog-actions {

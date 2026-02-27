@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, reactive, type Ref } from 'vue';
 import Storage from '@/services/Storage';
-import type { PageNavigationMode } from '@/types';
+import type { PageNavigationMode, ThemeMode } from '@/types';
 import {
   normalizeShortcutCombo,
   normalizeShortcutWithFallback,
@@ -67,6 +67,7 @@ interface SettingsStoreReturn {
   shortcutToggleModalKeyEnabled: Ref<boolean>;
   pauseOnInactiveEnabled: Ref<boolean>;
   dcconAliasEnabled: Ref<boolean>;
+  themeMode: Ref<ThemeMode>;
 
   // Actions
   loadSettings: () => Promise<void>;
@@ -92,6 +93,7 @@ interface SettingsStoreReturn {
   saveAutoRefreshHighlightDuration: (duration: number | string) => Promise<SaveResult>;
   savePauseOnInactiveEnabled: (enabled: boolean) => Promise<void>;
   saveDcconAliasEnabled: (enabled: boolean) => Promise<void>;
+  saveThemeMode: (mode: ThemeMode) => Promise<void>;
 
   // Constants
   customizableShortcutActions: ShortcutAction[];
@@ -162,6 +164,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   const shortcutToggleModalKeyEnabled = ref<boolean>(true);
   const pauseOnInactiveEnabled = ref<boolean>(true);
   const dcconAliasEnabled = ref<boolean>(true);
+  const themeMode = ref<ThemeMode>('system');
 
   // --- Actions (액션) ---
 
@@ -203,6 +206,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
       ),
       Storage.getPauseOnInactiveEnabled().then((val) => (pauseOnInactiveEnabled.value = val)),
       Storage.getDcconAliasEnabled().then((val) => (dcconAliasEnabled.value = val)),
+      Storage.getThemeMode().then((val) => (themeMode.value = val)),
     ];
 
     customizableShortcutActions.forEach((action) => {
@@ -406,6 +410,12 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     dcconAliasEnabled.value = enabled;
   }
 
+  async function saveThemeMode(mode: ThemeMode): Promise<void> {
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'system') return;
+    await Storage.saveThemeMode(mode);
+    themeMode.value = mode;
+  }
+
   // --- Return (반환) ---
   return {
     pageNavigationMode,
@@ -431,6 +441,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     shortcutToggleModalKeyEnabled,
     pauseOnInactiveEnabled,
     dcconAliasEnabled,
+    themeMode,
     loadSettings,
     savePageNavigationMode,
     saveAltNumberEnabled,
@@ -450,6 +461,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     saveAutoRefreshHighlightDuration,
     savePauseOnInactiveEnabled,
     saveDcconAliasEnabled,
+    saveThemeMode,
     customizableShortcutActions,
     defaultShortcutKeys,
   };

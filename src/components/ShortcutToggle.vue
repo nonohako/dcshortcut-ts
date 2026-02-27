@@ -182,8 +182,8 @@
     display: flex;
     align-items: center;
     padding: 10px 12px;
-    background-color: #fff;
-    border: 1px solid #e9ecef;
+    background-color: var(--dc-color-surface);
+    border: 1px solid var(--dc-color-border-soft);
     border-radius: 8px;
     gap: 10px;
   }
@@ -191,7 +191,7 @@
   .shortcut-toggle-prefix {
     font-size: 0.85rem;
     font-weight: 500;
-    color: #6c757d;
+    color: var(--dc-color-text-muted);
     min-width: 50px;
     text-align: right;
     flex-shrink: 0;
@@ -200,7 +200,7 @@
   .shortcut-toggle-label {
     font-size: 0.9rem;
     font-weight: 500;
-    color: #343a40;
+    color: var(--dc-color-text-primary);
     flex-grow: 1;
     display: inline-flex;
     align-items: center;
@@ -209,7 +209,9 @@
   .shortcut-toggle-input {
     width: 140px;
     padding: 6px 8px;
-    border: 1px solid #ced4da;
+    border: 1px solid var(--dc-color-border-strong);
+    background-color: var(--dc-color-surface);
+    color: var(--dc-color-text-primary);
     border-radius: 6px;
     font-size: 0.85rem;
     outline: none;
@@ -220,12 +222,12 @@
   }
   
   .shortcut-toggle-input::placeholder {
-    color: #adb5bd;
+    color: var(--dc-color-text-subtle);
   }
   
   .shortcut-toggle-input:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    border-color: var(--dc-color-accent);
+    box-shadow: var(--dc-focus-ring);
   }
   
   .switch {
@@ -254,7 +256,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #adb5bd;
+    background-color: var(--dc-color-switch-off);
     border-radius: 22px;
     transition: .2s;
   }
@@ -266,14 +268,14 @@
     width: 16px;
     left: 3px;
     bottom: 3px;
-    background-color: white;
+    background-color: var(--dc-color-surface);
     border-radius: 50%;
     transition: .2s;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   }
   
-  input:checked+.slider {
-    background-color: #0d6efd;
+  input:checked + .slider {
+    background-color: var(--dc-color-accent);
   }
   
   input:checked+.slider:before {
@@ -281,12 +283,12 @@
   }
   
   .change-shortcut-link {
-    background-color: #e9ecef;
-    border: 1px solid #ced4da;
+    background-color: var(--dc-color-key-bg);
+    border: 1px solid var(--dc-color-border-strong);
     border-radius: 6px;
     padding: 5px 10px;
     font-size: 0.8rem;
-    color: #212529;
+    color: var(--dc-color-key-text);
     text-decoration: none;
     font-weight: 500;
     white-space: nowrap;
@@ -297,7 +299,7 @@
   }
   
   .change-shortcut-link:hover {
-    background-color: #dee2e6;
-    border-color: #adb5bd;
+    background-color: var(--dc-color-surface-hover);
+    border-color: var(--dc-color-border);
   }
   </style>

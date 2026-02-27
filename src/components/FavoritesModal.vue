@@ -272,17 +272,17 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background-color: #ffffff;
+    background-color: var(--dc-color-surface);
     padding: 20px;
     border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--dc-shadow-strong);
     z-index: 10000;
     width: 380px; /* 너비 약간 증가 */
     max-height: 85vh;
     display: flex; /* Flexbox 레이아웃 */
     flex-direction: column; /* 세로 방향 */
     font-family: 'Roboto', sans-serif;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--dc-color-border);
     transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
     opacity: 1;
   }
@@ -299,14 +299,15 @@
     flex-grow: 1;
     padding: 8px 12px;
     font-size: 15px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--dc-color-border);
     border-radius: 8px;
-    background-color: #f9f9f9;
+    background-color: var(--dc-color-surface-muted);
+    color: var(--dc-color-text-primary);
     outline: none;
     cursor: pointer;
   }
   .profile-select:focus {
-    border-color: #1976d2;
+    border-color: var(--dc-color-primary);
   }
   .profile-actions {
     display: flex;
@@ -316,9 +317,9 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    border: 1px solid #e0e0e0;
-    background-color: #fff;
-    color: #555;
+    border: 1px solid var(--dc-color-border);
+    background-color: var(--dc-color-surface);
+    color: var(--dc-color-text-muted);
     font-size: 16px;
     font-weight: bold;
     cursor: pointer;
@@ -328,34 +329,34 @@
     justify-content: center;
   }
   .profile-action-btn:hover {
-    background-color: #f0f0f0;
-    color: #000;
+    background-color: var(--dc-color-surface-hover);
+    color: var(--dc-color-text-primary);
   }
   .profile-action-btn.danger:hover {
-    background-color: #ffebee;
-    color: #d32f2f;
+    background-color: var(--dc-color-danger-bg);
+    color: var(--dc-color-danger);
   }
   
   /* --- MODIFIED: Title Styles --- */
   .title-container {
     padding-bottom: 10px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--dc-color-border);
     margin-bottom: 15px;
     flex-shrink: 0;
   }
   .shortcut-title {
     font-size: 18px;
     font-weight: 700;
-    color: #212121;
+    color: var(--dc-color-text-primary);
     margin: 0;
   }
   .shortcut-title-input {
     width: 100%;
     font-size: 18px;
     font-weight: 700;
-    color: #212121;
+    color: var(--dc-color-text-primary);
     border: none;
-    border-bottom: 2px solid #1976d2;
+    border-bottom: 2px solid var(--dc-color-primary);
     padding: 0;
     outline: none;
     background: transparent;
@@ -377,24 +378,24 @@
     justify-content: space-between;
     padding: 10px 15px;
     margin: 5px 0;
-    background-color: #fafafa;
+    background-color: var(--dc-color-surface-subtle);
     border-radius: 10px;
     transition: background-color 0.2s ease;
     cursor: pointer;
   }
   .favorite-item:hover {
-    background-color: #f0f0f0;
+    background-color: var(--dc-color-surface-hover);
   }
   .favorite-item-empty {
     padding: 20px;
     text-align: center;
-    color: #757575;
+    color: var(--dc-color-text-muted);
     font-size: 14px;
   }
   .favorite-name {
     font-size: 15px;
     font-weight: 400;
-    color: #424242;
+    color: var(--dc-color-text-secondary);
     flex-grow: 1;
     white-space: nowrap;
     overflow: hidden;
@@ -403,7 +404,7 @@
   }
   .favorite-remove {
     background-color: transparent;
-    color: #757575;
+    color: var(--dc-color-text-muted);
     border: none;
     border-radius: 50%;
     width: 24px;
@@ -415,14 +416,14 @@
     flex-shrink: 0;
   }
   .favorite-remove:hover {
-    color: #d32f2f;
-    background-color: #ffebee;
+    color: var(--dc-color-danger);
+    background-color: var(--dc-color-danger-bg);
   }
   
   /* 구분선 스타일 */
   .shortcut-divider {
     height: 1px;
-    background-color: #e0e0e0;
+    background-color: var(--dc-color-border);
     margin: 15px 0;
     border: none;
     flex-shrink: 0;
@@ -436,28 +437,29 @@
     gap: 8px;
     margin: 0 0 15px 0; /* margin-top 제거 */
     padding: 15px;
-    background-color: #f5f5f5;
+    background-color: var(--dc-color-surface-muted);
     border-radius: 10px;
     flex-shrink: 0;
   }
   .add-favorite-input {
     width: 45px;
     padding: 8px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--dc-color-border);
     border-radius: 8px;
     font-size: 14px;
     text-align: center;
     outline: none;
     transition: border-color 0.2s ease;
-    background-color: #ffffff;
+    background-color: var(--dc-color-surface);
+    color: var(--dc-color-text-primary);
   }
   .add-favorite-input:focus {
-    border-color: #1976d2;
+    border-color: var(--dc-color-primary);
   }
   .add-favorite-button {
     padding: 8px 16px;
-    background-color: #1976d2;
-    color: #ffffff;
+    background-color: var(--dc-color-primary);
+    color: var(--dc-color-tooltip-text);
     border: none;
     border-radius: 8px;
     font-size: 14px;
@@ -467,7 +469,7 @@
     flex-grow: 1;
   }
   .add-favorite-button:hover {
-    background-color: #1565c0;
+    background-color: var(--dc-color-primary-hover);
   }
   
   /* 공통 버튼 스타일 (닫기, 단축키 관리 버튼) */
@@ -476,8 +478,8 @@
     width: 100%;
     padding: 10px;
     margin-top: 10px;
-    background-color: #1976d2;
-    color: #ffffff;
+    background-color: var(--dc-color-primary);
+    color: var(--dc-color-tooltip-text);
     border: none;
     border-radius: 10px;
     font-size: 15px;
@@ -491,12 +493,12 @@
       margin-top: 0;
   }
   .dc-button:hover {
-    background-color: #1565c0;
+    background-color: var(--dc-color-primary-hover);
   }
   .dc-button-green {
-    background-color: #4caf50;
+    background-color: var(--dc-color-success);
   }
   .dc-button-green:hover {
-    background-color: #388e3c;
+    background-color: var(--dc-color-success-hover);
   }
   </style>

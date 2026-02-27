@@ -35,6 +35,94 @@
   </script>
   
   <style>
+  :root {
+    --dc-color-bg: #f8f9fa;
+    --dc-color-surface: #ffffff;
+    --dc-color-surface-muted: #f5f5f5;
+    --dc-color-surface-subtle: #fafafa;
+    --dc-color-surface-hover: #f1f3f5;
+    --dc-color-text-primary: #212529;
+    --dc-color-text-secondary: #495057;
+    --dc-color-text-muted: #6c757d;
+    --dc-color-text-subtle: #868e96;
+    --dc-color-border: #dee2e6;
+    --dc-color-border-soft: #e9ecef;
+    --dc-color-border-strong: #ced4da;
+    --dc-color-accent: #0d6efd;
+    --dc-color-accent-hover: #0b5ed7;
+    --dc-color-primary: #1976d2;
+    --dc-color-primary-hover: #1565c0;
+    --dc-color-success: #4caf50;
+    --dc-color-success-hover: #388e3c;
+    --dc-color-danger: #d32f2f;
+    --dc-color-danger-strong: #dc3545;
+    --dc-color-danger-bg: #ffebee;
+    --dc-color-warning-text: #c0392b;
+    --dc-color-warning-bg: #fbe9e7;
+    --dc-color-warning-border: #ffab91;
+    --dc-color-orange: #ffc107;
+    --dc-color-orange-hover: #ffca2c;
+    --dc-color-overlay: rgba(0, 0, 0, 0.45);
+    --dc-color-switch-off: #adb5bd;
+    --dc-color-key-bg: #e9ecef;
+    --dc-color-key-text: #212529;
+    --dc-color-tooltip-bg: #212529;
+    --dc-color-tooltip-text: #ffffff;
+    --dc-color-preview-bg: rgba(20, 20, 20, 0.9);
+    --dc-color-preview-border: rgba(255, 255, 255, 0.2);
+    --dc-color-preview-key: #ffc107;
+    --dc-color-preview-text: #e0e0e0;
+    --dc-shadow-soft: 0 2px 4px rgba(0, 0, 0, 0.05);
+    --dc-shadow-medium: 0 6px 20px rgba(0, 0, 0, 0.1);
+    --dc-shadow-strong: 0 8px 24px rgba(0, 0, 0, 0.15);
+    --dc-shadow-tooltip: 0 2px 5px rgba(0, 0, 0, 0.2);
+    --dc-focus-ring: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+  }
+
+  :root[data-dc-theme='dark'] {
+    --dc-color-bg: #15181c;
+    --dc-color-surface: #1d2228;
+    --dc-color-surface-muted: #242a31;
+    --dc-color-surface-subtle: #262d35;
+    --dc-color-surface-hover: #2d3640;
+    --dc-color-text-primary: #f1f3f5;
+    --dc-color-text-secondary: #d0d7de;
+    --dc-color-text-muted: #a6b0ba;
+    --dc-color-text-subtle: #8f99a3;
+    --dc-color-border: #3d4650;
+    --dc-color-border-soft: #323b45;
+    --dc-color-border-strong: #515d6a;
+    --dc-color-accent: #6ea8fe;
+    --dc-color-accent-hover: #8bb9ff;
+    --dc-color-primary: #5a9cf2;
+    --dc-color-primary-hover: #7bb1ff;
+    --dc-color-success: #5dbb63;
+    --dc-color-success-hover: #77ce7d;
+    --dc-color-danger: #ff7d73;
+    --dc-color-danger-strong: #f26d79;
+    --dc-color-danger-bg: rgba(242, 109, 121, 0.18);
+    --dc-color-warning-text: #ffb6a0;
+    --dc-color-warning-bg: rgba(255, 138, 101, 0.2);
+    --dc-color-warning-border: rgba(255, 171, 145, 0.5);
+    --dc-color-orange: #dca54a;
+    --dc-color-orange-hover: #efb65a;
+    --dc-color-overlay: rgba(0, 0, 0, 0.6);
+    --dc-color-switch-off: #6b7785;
+    --dc-color-key-bg: #2f3842;
+    --dc-color-key-text: #eef2f6;
+    --dc-color-tooltip-bg: #11161b;
+    --dc-color-tooltip-text: #f2f5f8;
+    --dc-color-preview-bg: rgba(14, 18, 23, 0.92);
+    --dc-color-preview-border: rgba(255, 255, 255, 0.14);
+    --dc-color-preview-key: #ffd666;
+    --dc-color-preview-text: #dbe2ea;
+    --dc-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.28);
+    --dc-shadow-medium: 0 10px 24px rgba(0, 0, 0, 0.35);
+    --dc-shadow-strong: 0 14px 34px rgba(0, 0, 0, 0.4);
+    --dc-shadow-tooltip: 0 6px 14px rgba(0, 0, 0, 0.35);
+    --dc-focus-ring: 0 0 0 0.2rem rgba(110, 168, 254, 0.35);
+  }
+
   /* 
     이 스타일 블록은 scoped 속성이 없으므로, 이 컴포넌트와 모든 자식 컴포넌트에
     적용되는 전역 스타일을 정의합니다.
@@ -56,8 +144,8 @@
     전역적으로 접근 가능한 스타일로 정의해야 합니다.
   */
   .global-tooltip-style {
-    background-color: #212529; /* 어두운 배경색 */
-    color: white; /* 흰색 텍스트 */
+    background-color: var(--dc-color-tooltip-bg);
+    color: var(--dc-color-tooltip-text);
     padding: 8px 12px;
     border-radius: 6px;
     font-size: 0.8rem; /* 작은 글씨 크기 */
@@ -65,7 +153,7 @@
     white-space: nowrap; /* 기본적으로 한 줄로 표시 */
     z-index: 1000000; /* 다른 모든 UI 요소 위에 표시되도록 매우 높은 z-index 설정 */
     pointer-events: none; /* 툴팁 위로 마우스 이벤트가 통과하도록 설정 */
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    box-shadow: var(--dc-shadow-tooltip);
   }
   
   /* 텍스트가 길 경우 여러 줄로 표시하기 위한 스타일 */

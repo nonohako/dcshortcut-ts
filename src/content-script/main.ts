@@ -20,12 +20,13 @@ import DcconAlias from '@/services/DcconAlias';
 import {
   FAVORITE_GALLERIES_KEY,
   ACTIVE_FAVORITES_PROFILE_KEY,
+  THEME_MODE_KEY,
   addPrefetchHints,
   handlePageLoadScroll,
   setupTabFocus,
   focusSubjectInputOnWritePage,
 } from '@/services/Global';
-import type { PageNavigationMode } from '@/types';
+import type { PageNavigationMode, ThemeMode } from '@/types';
 
 console.log('👋 DCInside ShortCut 콘텐츠 스크립트 (TS) 로드됨!');
 
@@ -65,6 +66,12 @@ function isPageNavigationMode(value: unknown): value is PageNavigationMode {
   return value === 'ajax' || value === 'full' || value === 'infinite';
 }
 
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === 'light' || value === 'dark' || value === 'system';
+}
+
+type AppliedTheme = 'light' | 'dark';
+
 // =================================================================
 // Global State
 // =================================================================
@@ -72,6 +79,56 @@ function isPageNavigationMode(value: unknown): value is PageNavigationMode {
 let myTabId: number | null = null;
 let knownLeaderId: number | null = null;
 let shouldRunImmediateRefreshOnNextStart = false;
+const systemThemeMediaQuery =
+  typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null;
+let systemThemeListener: ((event: MediaQueryListEvent) => void) | null = null;
+
+function resolveAppliedTheme(mode: ThemeMode): AppliedTheme {
+  if (mode === 'system') {
+    return systemThemeMediaQuery?.matches ? 'dark' : 'light';
+  }
+  return mode;
+}
+
+function setSystemThemeListenerEnabled(enabled: boolean): void {
+  if (!systemThemeMediaQuery) return;
+
+  if (!enabled && systemThemeListener) {
+    if (typeof systemThemeMediaQuery.removeEventListener === 'function') {
+      systemThemeMediaQuery.removeEventListener('change', systemThemeListener);
+    } else {
+      systemThemeMediaQuery.removeListener(systemThemeListener);
+    }
+    systemThemeListener = null;
+    return;
+  }
+
+  if (enabled && !systemThemeListener) {
+    systemThemeListener = () => {
+      if (settingsStore.themeMode === 'system') {
+        applyThemeMode(settingsStore.themeMode);
+      }
+    };
+    if (typeof systemThemeMediaQuery.addEventListener === 'function') {
+      systemThemeMediaQuery.addEventListener('change', systemThemeListener);
+    } else {
+      systemThemeMediaQuery.addListener(systemThemeListener);
+    }
+  }
+}
+
+function applyThemeMode(mode: ThemeMode): void {
+  const appliedTheme = resolveAppliedTheme(mode);
+  const mountEl = document.getElementById('dc-ShortCut-app');
+  if (mountEl) {
+    mountEl.setAttribute('data-dc-theme', appliedTheme);
+  }
+  // 디시콘 별칭 팝업 등 body 직속 요소도 동일 테마를 참조할 수 있도록 html에도 반영
+  document.documentElement.setAttribute('data-dc-theme', appliedTheme);
+  setSystemThemeListenerEnabled(mode === 'system');
+}
 
 // =================================================================
 // Vue & Pinia Initialization (Vue 및 Pinia 초기화)
@@ -185,6 +242,10 @@ function setupStorageListener(): void {
             break;
           case 'pauseOnInactiveEnabled':
             settingsStore.pauseOnInactiveEnabled = newValue;
+            break;
+          case THEME_MODE_KEY:
+            settingsStore.themeMode = isThemeMode(newValue) ? newValue : 'system';
+            applyThemeMode(settingsStore.themeMode);
             break;
           default:
             // 단축키 키/활성화 여부 같이 패턴이 있는 경우 처리
@@ -364,6 +425,7 @@ async function initialize(): Promise<void> {
 
     await Promise.all([settingsStore.loadSettings(), favoritesStore.loadProfiles()]);
     console.log('[Main] 설정 및 즐겨찾기 로드 완료.');
+    applyThemeMode(settingsStore.themeMode);
 
     setupStorageListener();
 
@@ -384,8 +446,11 @@ async function initialize(): Promise<void> {
 
     await Events.triggerMacroNavigation();
 
-    // [수정] 이벤트 리스너를 단순화합니다.
-    settingsStore.$subscribe(handleAutoRefresherState);
+    // [수정] 설정 변경 시 자동 새로고침 상태 및 테마를 동기화합니다.
+    settingsStore.$subscribe(() => {
+      handleAutoRefresherState();
+      applyThemeMode(settingsStore.themeMode);
+    });
 
     // visibilitychange 리스너는 이제 필요 없습니다.
     // document.removeEventListener('visibilitychange', ...);
@@ -419,4 +484,5 @@ if (document.readyState === 'loading') {
 const mountPoint = document.createElement('div');
 mountPoint.id = 'dc-ShortCut-app';
 document.body.appendChild(mountPoint);
+applyThemeMode(settingsStore.themeMode);
 app.mount('#dc-ShortCut-app');

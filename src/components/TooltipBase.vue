@@ -218,8 +218,8 @@
   -->
   <style>
   .global-tooltip-style {
-    background-color: #212529; /* Dark background */
-    color: white;
+    background-color: var(--dc-color-tooltip-bg);
+    color: var(--dc-color-tooltip-text);
     padding: 8px 12px; /* Internal padding */
     border-radius: 6px; /* Rounded corners */
     font-size: 0.8rem; /* 12.8px */
@@ -227,7 +227,7 @@
     white-space: nowrap; /* Default one line */
     z-index: 1000000; /* Ensure it's on top of almost everything */
     pointer-events: none; /* Tooltip itself should not capture mouse events */
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* Optional shadow */
+    box-shadow: var(--dc-shadow-tooltip); /* Optional shadow */
     /* Transitions can be added if desired, but JS controls visibility */
     /* transition: opacity 0.15s ease-in-out; */
   }

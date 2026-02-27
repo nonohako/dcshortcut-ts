@@ -85,16 +85,16 @@
     position: fixed;
     bottom: 20px;
     left: 20px;
-    background-color: rgba(20, 20, 20, 0.9);
-    color: #f0f0f0;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: var(--dc-color-preview-bg);
+    color: var(--dc-color-preview-text);
+    border: 1px solid var(--dc-color-preview-border);
     border-radius: 12px;
     padding: 12px 16px;
     width: 280px;
     z-index: 99999;
     pointer-events: none; /* 컨테이너 아래의 요소 클릭이 가능하도록 설정 */
     font-family: 'Roboto', sans-serif;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--dc-shadow-medium);
     backdrop-filter: blur(5px);
     transition: opacity 0.15s ease-in-out;
   }
@@ -102,10 +102,10 @@
   .preview-title {
     font-size: 1rem;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--dc-color-text-primary);
     margin: 0 0 10px 0;
     padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid var(--dc-color-preview-border);
     text-align: center;
   }
   
@@ -126,7 +126,7 @@
   
   .preview-key {
     font-weight: 500;
-    color: #ffc107; /* 키를 강조하는 밝은 색상 */
+    color: var(--dc-color-preview-key); /* 키를 강조하는 밝은 색상 */
     margin-right: 8px;
     min-width: 25px;
   }
@@ -135,11 +135,11 @@
     flex-grow: 1;
     overflow: hidden;
     text-overflow: ellipsis; /* 이름이 길 경우 ...으로 표시 */
-    color: #e0e0e0;
+    color: var(--dc-color-preview-text);
   }
   
   .preview-item-empty {
-    color: #888;
+    color: var(--dc-color-text-subtle);
     text-align: center;
     padding: 10px 0;
   }

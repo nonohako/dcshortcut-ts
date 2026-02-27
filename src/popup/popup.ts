@@ -1,8 +1,12 @@
+import type { ThemeMode } from '@/types';
+
 // =================================================================
 // Type Definitions and Constants (타입 정의 및 상수)
 // =================================================================
 
 console.log('👋 Popup script (TypeScript) loaded!');
+
+const THEME_MODE_KEY = 'dcinside_theme_mode';
 
 /**
  * @type ShortcutAction
@@ -97,6 +101,68 @@ const fixedShortcutListEl = document.getElementById(
 const openFavoritesBtn = document.getElementById('open-favorites-btn') as HTMLButtonElement | null;
 const openShortcutsBtn = document.getElementById('open-shortcuts-btn') as HTMLButtonElement | null;
 const statusMessageEl = document.getElementById('status-message') as HTMLDivElement | null;
+
+const systemThemeMediaQuery =
+  typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null;
+let currentThemeMode: ThemeMode = 'system';
+let isSystemThemeListenerAttached = false;
+
+function sanitizeThemeMode(value: unknown): ThemeMode {
+  return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
+}
+
+function resolvePopupTheme(mode: ThemeMode): 'light' | 'dark' {
+  if (mode === 'system') {
+    return systemThemeMediaQuery?.matches ? 'dark' : 'light';
+  }
+  return mode;
+}
+
+function applyPopupTheme(mode: ThemeMode): void {
+  const resolvedTheme = resolvePopupTheme(mode);
+  document.documentElement.setAttribute('data-dc-theme', resolvedTheme);
+}
+
+function onSystemThemeChange(): void {
+  if (currentThemeMode === 'system') {
+    applyPopupTheme(currentThemeMode);
+  }
+}
+
+function setSystemThemeListener(enabled: boolean): void {
+  if (!systemThemeMediaQuery) return;
+
+  if (enabled) {
+    if (isSystemThemeListenerAttached) return;
+    if (typeof systemThemeMediaQuery.addEventListener === 'function') {
+      systemThemeMediaQuery.addEventListener('change', onSystemThemeChange);
+    } else {
+      systemThemeMediaQuery.addListener(onSystemThemeChange);
+    }
+    isSystemThemeListenerAttached = true;
+    return;
+  }
+
+  if (!isSystemThemeListenerAttached) return;
+  if (typeof systemThemeMediaQuery.removeEventListener === 'function') {
+    systemThemeMediaQuery.removeEventListener('change', onSystemThemeChange);
+  } else {
+    systemThemeMediaQuery.removeListener(onSystemThemeChange);
+  }
+  isSystemThemeListenerAttached = false;
+}
+
+async function loadThemeMode(): Promise<ThemeMode> {
+  try {
+    const result = await chrome.storage.local.get({ [THEME_MODE_KEY]: 'system' });
+    return sanitizeThemeMode(result[THEME_MODE_KEY]);
+  } catch (error) {
+    console.error('테마 설정 불러오기 실패:', error);
+    return 'system';
+  }
+}
 
 // =================================================================
 // Helper Functions (헬퍼 함수)
@@ -202,6 +268,21 @@ function renderFixedShortcuts(): void {
  * DOM 콘텐츠가 모두 로드되면 실행되는 메인 함수.
  */
 document.addEventListener('DOMContentLoaded', async () => {
+  currentThemeMode = await loadThemeMode();
+  applyPopupTheme(currentThemeMode);
+  setSystemThemeListener(currentThemeMode === 'system');
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !changes[THEME_MODE_KEY]) return;
+    currentThemeMode = sanitizeThemeMode(changes[THEME_MODE_KEY].newValue);
+    applyPopupTheme(currentThemeMode);
+    setSystemThemeListener(currentThemeMode === 'system');
+  });
+
+  window.addEventListener('beforeunload', () => {
+    setSystemThemeListener(false);
+  });
+
   // 0. manifest 버전 표시 (단일 소스: manifest.json)
   const versionEl = document.getElementById('version-info');
   if (versionEl && typeof chrome?.runtime?.getManifest === 'function') {

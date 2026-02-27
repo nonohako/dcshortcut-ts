@@ -1,10 +1,11 @@
-import type { DcconAliasMap, FavoriteProfiles, PageNavigationMode } from '@/types';
+import type { DcconAliasMap, FavoriteProfiles, PageNavigationMode, ThemeMode } from '@/types';
 import {
   DCCON_ALIAS_MAP_KEY,
   DCCON_ALIAS_ENABLED_KEY,
   FAVORITE_GALLERIES_KEY,
   PAGE_NAVIGATION_MODE_KEY,
   MACRO_INTERVAL_KEY,
+  THEME_MODE_KEY,
 } from './Global';
 
 /**
@@ -61,6 +62,10 @@ function sanitizeDcconAliasMap(rawValue: unknown): DcconAliasMap {
   }
 
   return sanitized;
+}
+
+function sanitizeThemeMode(value: unknown): ThemeMode {
+  return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
 }
 
 const Storage = {
@@ -279,6 +284,21 @@ const Storage = {
   async savePageNavigationMode(mode: PageNavigationMode): Promise<void> {
     if (mode !== 'ajax' && mode !== 'full' && mode !== 'infinite') return;
     await this.setData(PAGE_NAVIGATION_MODE_KEY, mode);
+  },
+
+  // --- UI 테마 모드 ---
+  async getThemeMode(): Promise<ThemeMode> {
+    const defaultValue: ThemeMode = 'system';
+    const value = await this.getData<unknown>(THEME_MODE_KEY, defaultValue);
+    return sanitizeThemeMode(value);
+  },
+
+  async saveThemeMode(mode: ThemeMode): Promise<void> {
+    try {
+      await this.setData(THEME_MODE_KEY, sanitizeThemeMode(mode));
+    } catch (error) {
+      console.error('Failed to save themeMode:', error);
+    }
   },
 
   // --- 즐겨찾기 갤러리 목록 ---

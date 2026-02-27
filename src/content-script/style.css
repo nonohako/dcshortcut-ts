@@ -81,10 +81,10 @@ table.gall_list.empty tbody td {
   z-index: 9998;
   min-width: 390px;
   max-width: 560px;
-  border: 1px solid #d9dde4;
+  border: 1px solid var(--dc-color-border, #d9dde4);
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+  background: var(--dc-color-surface, #fff);
+  box-shadow: var(--dc-shadow-medium, 0 10px 26px rgba(0, 0, 0, 0.2));
   padding: 5px;
 }
 
@@ -106,8 +106,8 @@ table.gall_list.empty tbody td {
 
 .dc-shortcut-dccon-popup-button {
   width: 100%;
-  border: 1px solid #eef0f4;
-  background: #fff;
+  border: 1px solid var(--dc-color-border-soft, #eef0f4);
+  background: var(--dc-color-surface, #fff);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
@@ -122,8 +122,8 @@ table.gall_list.empty tbody td {
 
 .dc-shortcut-dccon-popup-button:hover,
 .dc-shortcut-dccon-popup-button.is-selected {
-  background: #f2f6ff;
-  border-color: #c8d7ff;
+  background: var(--dc-color-surface-hover, #f2f6ff);
+  border-color: var(--dc-color-accent, #c8d7ff);
 }
 
 .dc-shortcut-dccon-popup-button img {
@@ -131,7 +131,7 @@ table.gall_list.empty tbody td {
   height: 50px;
   object-fit: contain;
   border-radius: 4px;
-  background: #f8f9fb;
+  background: var(--dc-color-bg, #f8f9fb);
   flex-shrink: 0;
 }
 
@@ -139,7 +139,7 @@ table.gall_list.empty tbody td {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--dc-color-text-primary, #1f2329);
   line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
@@ -151,11 +151,11 @@ table.gall_list.empty tbody td {
   margin-top: 6px;
   padding: 6px 8px;
   border-radius: 6px;
-  background: #f5f7fb;
-  border: 1px solid #e5e9f1;
+  background: var(--dc-color-surface-subtle, #f5f7fb);
+  border: 1px solid var(--dc-color-border-soft, #e5e9f1);
   font-size: 12px;
   line-height: 1.45;
-  color: #2a3140;
+  color: var(--dc-color-text-secondary, #2a3140);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

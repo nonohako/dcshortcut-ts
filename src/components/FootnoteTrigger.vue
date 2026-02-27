@@ -125,14 +125,14 @@
   
   /* 키보드 포커스 시 시각적 피드백을 제공합니다. */
   .footnote-trigger-wrapper:focus {
-    outline: 1px dotted #0d6efd;
+    outline: 1px dotted var(--dc-color-accent);
     outline-offset: 1px;
   }
   
   /* 슬롯에 내용이 제공되지 않았을 때 표시되는 기본 트리거의 스타일입니다. */
   .default-footnote-trigger {
     font-size: 0.7rem; /* 11.2px */
-    color: #dc3545; /* Bootstrap의 'danger' 색상 */
+    color: var(--dc-color-danger-strong);
     font-weight: bold;
     vertical-align: super; /* 텍스트를 위첨자처럼 보이게 합니다. */
     user-select: none; /* 텍스트 선택을 방지합니다. */

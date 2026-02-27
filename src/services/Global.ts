@@ -46,6 +46,11 @@ export const DCCON_ALIAS_MAP_KEY = 'dcinside_dccon_alias_map';
 export const DCCON_ALIAS_ENABLED_KEY = 'dcinside_dccon_alias_enabled';
 
 /**
+ * @description UI 테마 모드를 저장하는 storage 키
+ */
+export const THEME_MODE_KEY = 'dcinside_theme_mode';
+
+/**
  * @description 'A/S' 단축키로 전체 페이지 로드 시 스크롤 위치 조정을 위한 sessionStorage 키
  */
 export const AS_FULL_LOAD_SCROLL_KEY = 'dcinside_navigated_by_as_full_load';
