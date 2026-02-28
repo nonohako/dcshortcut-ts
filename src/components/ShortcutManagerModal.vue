@@ -143,11 +143,25 @@
               </label>
             </div>
           </div>
+          <div v-if="dcconAliasItems.length > 0" class="dccon-search-row">
+            <input
+              :value="dcconAliasSearchQuery"
+              type="search"
+              class="dccon-search-input"
+              placeholder="별칭 검색 (@ 없이 입력)"
+              aria-label="디시콘 별칭 검색"
+              @input="updateDcconAliasSearchQuery"
+              @compositionend="updateDcconAliasSearchQuery"
+            />
+          </div>
           <div v-if="dcconAliasItems.length === 0" class="alias-empty-state">
             등록된 디시콘 별칭이 없습니다.
           </div>
+          <div v-else-if="filteredDcconAliasItems.length === 0" class="alias-empty-state">
+            검색 결과가 없습니다.
+          </div>
           <ul v-else class="alias-list">
-            <li v-for="item in dcconAliasItems" :key="item.id" class="alias-list-item">
+            <li v-for="item in filteredDcconAliasItems" :key="item.id" class="alias-list-item">
               <div class="alias-item-main">
                 <img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.alias" :title="item.aliasTooltip" loading="lazy" />
                 <span class="alias-item-aliases" :title="item.aliasTooltip">
@@ -340,6 +354,7 @@ const isVisible = ref<boolean>(false);
 const activeTab = ref<TabName>('shortcuts');
 const macroIntervalTooltipText = ref<string>("너무 짧게 설정 시 IP 차단 위험 증가 (2초 이상 권장)");
 const dcconAliasItems = ref<DcconAliasListItem[]>([]);
+const dcconAliasSearchQuery = ref<string>('');
 const isResetDialogVisible = ref<boolean>(false);
 const resetConfirmInput = ref<string>('');
 let debounceTimer: number | null = null;
@@ -388,6 +403,11 @@ const getShortcutLabel = (action: ShortcutLabelKey): string => dynamicLabels.val
 
 const safeTrim = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const normalizeAliasKey = (alias: string): string => safeTrim(alias).toLocaleLowerCase();
+const HANGUL_SYLLABLE_BASE = 0xac00;
+const HANGUL_SYLLABLE_LAST = 0xd7a3;
+const HANGUL_INITIAL_CYCLE = 588;
+const HANGUL_INITIALS = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'] as const;
+const HANGUL_CONSONANT_QUERY_REGEX = /^[ㄱ-ㅎ]+$/;
 const sanitizeSingleAliasInput = (rawAlias: string): string => {
   if (typeof rawAlias !== 'string') return '';
   const alias = rawAlias.replace(/^@+/, '').trim();
@@ -433,6 +453,58 @@ const compareAliasItems = (a: DcconAliasListItem, b: DcconAliasListItem): number
   const packageCompare = a.packageIdx.localeCompare(b.packageIdx, 'en', { numeric: true });
   if (packageCompare !== 0) return packageCompare;
   return a.detailIdx.localeCompare(b.detailIdx, 'en', { numeric: true });
+};
+
+const extractHangulInitials = (value: string): string => {
+  let initials = '';
+
+  for (const char of value) {
+    const codePoint = char.charCodeAt(0);
+    if (codePoint >= HANGUL_SYLLABLE_BASE && codePoint <= HANGUL_SYLLABLE_LAST) {
+      const initialIndex = Math.floor((codePoint - HANGUL_SYLLABLE_BASE) / HANGUL_INITIAL_CYCLE);
+      initials += HANGUL_INITIALS[initialIndex] ?? '';
+      continue;
+    }
+    if (HANGUL_CONSONANT_QUERY_REGEX.test(char)) {
+      initials += char;
+    }
+  }
+
+  return initials;
+};
+
+const isHangulConsonantQuery = (query: string): boolean =>
+  query.length > 0 && HANGUL_CONSONANT_QUERY_REGEX.test(query);
+
+const matchesAliasSearchQuery = (
+  source: string,
+  normalizedQuery: string,
+  consonantQuery: string
+): boolean => {
+  const normalizedSource = normalizeAliasKey(source);
+  if (normalizedSource.includes(normalizedQuery)) return true;
+  if (!isHangulConsonantQuery(consonantQuery)) return false;
+  return extractHangulInitials(source).includes(consonantQuery);
+};
+
+const normalizedDcconAliasSearchQuery = computed<string>(() =>
+  normalizeAliasKey(dcconAliasSearchQuery.value.replace(/^@+/, ''))
+);
+
+const filteredDcconAliasItems = computed<DcconAliasListItem[]>(() => {
+  const query = normalizedDcconAliasSearchQuery.value;
+  if (!query) return dcconAliasItems.value;
+  const consonantQuery = query.replace(/\s+/g, '');
+
+  return dcconAliasItems.value.filter((item) =>
+    item.aliases.some((alias) => matchesAliasSearchQuery(alias, query, consonantQuery))
+  );
+});
+
+const updateDcconAliasSearchQuery = (event: Event): void => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  dcconAliasSearchQuery.value = target.value;
 };
 
 const removeAliasTargetFromMap = (
@@ -1408,6 +1480,30 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.dccon-search-row {
+  margin-bottom: 10px;
+}
+
+.dccon-search-input {
+  width: 100%;
+  border: 1px solid var(--dc-color-border);
+  border-radius: 6px;
+  background: var(--dc-color-surface);
+  color: var(--dc-color-text-primary);
+  padding: 8px 10px;
+  font-size: 0.84rem;
+}
+
+.dccon-search-input::placeholder {
+  color: var(--dc-color-text-muted);
+}
+
+.dccon-search-input:focus {
+  outline: none;
+  border-color: var(--dc-color-accent);
+  box-shadow: var(--dc-focus-ring);
 }
 
 .alias-refresh-button {

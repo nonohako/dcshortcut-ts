@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DCInside ShortCut",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "디시인사이드 단축키 추가, 즐겨찾는 갤러리 단축키 기능",
   "icons": {
     "16": "icons/icon16.png",
@@ -40,11 +40,21 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.dcinside.com/*"],
-      "js": ["content-script.js"],
-      "css": ["content-script.css"],
+      "matches": [
+        "*://*.dcinside.com/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "css": [
+        "content-script.css"
+      ],
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage", "commands", "tabs"]
+  "permissions": [
+    "storage",
+    "commands",
+    "tabs"
+  ]
 }

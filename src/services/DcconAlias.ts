@@ -29,6 +29,11 @@ interface AliasEditableTargetInfo {
 
 const SUGGESTION_LIMIT = 120;
 const MAX_ALIAS_LENGTH = 5;
+const HANGUL_SYLLABLE_BASE = 0xac00;
+const HANGUL_SYLLABLE_LAST = 0xd7a3;
+const HANGUL_INITIAL_CYCLE = 588;
+const HANGUL_INITIALS = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'] as const;
+const HANGUL_CONSONANT_QUERY_REGEX = /^[ㄱ-ㅎ]+$/;
 const POPUP_CLASS_NAME = 'dc-shortcut-dccon-popup';
 const POPUP_LIST_CLASS_NAME = 'dc-shortcut-dccon-popup-list';
 const POPUP_CELL_CLASS_NAME = 'dc-shortcut-dccon-popup-cell';
@@ -258,27 +263,46 @@ function getAliasesByTarget(packageIdx: string, detailIdx: string): string[] {
   return Array.from(fallback.values()).sort(compareAliasStrings);
 }
 
+function extractHangulInitials(value: string): string {
+  let initials = '';
+
+  for (const char of value) {
+    const codePoint = char.charCodeAt(0);
+    if (codePoint >= HANGUL_SYLLABLE_BASE && codePoint <= HANGUL_SYLLABLE_LAST) {
+      const initialIndex = Math.floor((codePoint - HANGUL_SYLLABLE_BASE) / HANGUL_INITIAL_CYCLE);
+      initials += HANGUL_INITIALS[initialIndex] ?? '';
+      continue;
+    }
+    if (HANGUL_CONSONANT_QUERY_REGEX.test(char)) {
+      initials += char;
+    }
+  }
+
+  return initials;
+}
+
+function isHangulConsonantQuery(query: string): boolean {
+  return query.length > 0 && HANGUL_CONSONANT_QUERY_REGEX.test(query);
+}
+
+function matchesAliasSearchQuery(source: string, normalizedQuery: string, consonantQuery: string): boolean {
+  const normalizedSource = normalizeAliasKey(source);
+  if (normalizedSource.includes(normalizedQuery)) return true;
+  if (!isHangulConsonantQuery(consonantQuery)) return false;
+  return extractHangulInitials(source).includes(consonantQuery);
+}
+
 function getMatchingAliases(query: string): AliasPopupTarget[] {
   const normalizedQuery = normalizeAliasKey(query);
   if (!normalizedQuery) {
     return groupedAliases.slice(0, SUGGESTION_LIMIT);
   }
-
-  const startsWithMatches: AliasPopupTarget[] = [];
-  const partialMatches: AliasPopupTarget[] = [];
-
-  groupedAliases.forEach((target) => {
-    const normalizedAliases = target.aliases.map((alias) => normalizeAliasKey(alias));
-    if (normalizedAliases.some((alias) => alias.startsWith(normalizedQuery))) {
-      startsWithMatches.push(target);
-      return;
-    }
-    if (normalizedAliases.some((alias) => alias.includes(normalizedQuery))) {
-      partialMatches.push(target);
-    }
-  });
-
-  return [...startsWithMatches, ...partialMatches].slice(0, SUGGESTION_LIMIT);
+  const consonantQuery = normalizedQuery.replace(/\s+/g, '');
+  return groupedAliases
+    .filter((target) =>
+      target.aliases.some((alias) => matchesAliasSearchQuery(alias, normalizedQuery, consonantQuery))
+    )
+    .slice(0, SUGGESTION_LIMIT);
 }
 
 function extractAliasTokenContext(textarea: HTMLTextAreaElement): AliasTokenContext | null {
@@ -630,6 +654,66 @@ function readArticleNoFallback(textarea: HTMLTextAreaElement): string {
   return '';
 }
 
+function firstNonEmptyValue(values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    const trimmed = safeTrim(value);
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function readAttributeValue(element: Element | null, attributeName: string): string {
+  return safeTrim(element?.getAttribute(attributeName));
+}
+
+function readReplyContext(
+  textarea: HTMLTextAreaElement
+): {
+  cNo: string;
+  replyNo: string;
+} {
+  const writeBox = textarea.closest<HTMLElement>('.cmt_write_box');
+  const submitButton = writeBox?.querySelector<HTMLButtonElement>('button.repley_add') ?? null;
+  const dcconButton = writeBox?.querySelector<HTMLButtonElement>('button.tx_dccon') ?? null;
+  const replyList = textarea.closest<HTMLElement>('ul.reply_list[p-no], ul.reply_list[id^="reply_list_"]');
+  const memoNo = textarea.id.match(/^memo_(\d+)$/)?.[1] ?? '';
+
+  const explicitReplyMarker = firstNonEmptyValue([
+    readAttributeValue(writeBox, 'reply_no'),
+    readAttributeValue(submitButton, 'reply_no'),
+    readAttributeValue(dcconButton, 'reply_no'),
+    readAttributeValue(submitButton, 'r_idx'),
+    readAttributeValue(dcconButton, 'r_idx'),
+    readAttributeValue(replyList, 'p-no'),
+  ]);
+
+  if (!explicitReplyMarker) {
+    return { cNo: '', replyNo: '' };
+  }
+
+  const replyNo = firstNonEmptyValue([
+    readAttributeValue(writeBox, 'reply_no'),
+    readAttributeValue(submitButton, 'reply_no'),
+    readAttributeValue(dcconButton, 'reply_no'),
+    readAttributeValue(submitButton, 'r_idx'),
+    readAttributeValue(dcconButton, 'r_idx'),
+    readAttributeValue(replyList, 'p-no'),
+    memoNo,
+    readAttributeValue(writeBox, 'data-no'),
+  ]);
+
+  const cNo = firstNonEmptyValue([
+    readAttributeValue(writeBox, 'c_no'),
+    readAttributeValue(submitButton, 'c_no'),
+    readAttributeValue(dcconButton, 'c_no'),
+    readAttributeValue(writeBox, 'data-no'),
+    readAttributeValue(replyList, 'p-no'),
+    replyNo,
+  ]);
+
+  return { cNo, replyNo };
+}
+
 async function requestInsertIcon(
   textarea: HTMLTextAreaElement,
   selectedTarget: AliasPopupTarget
@@ -673,6 +757,14 @@ async function requestInsertIcon(
     gall_nick_name: readNamedValue('gall_nick_name', form),
     use_gall_nick: readNamedValue('use_gall_nick', form),
   };
+
+  const { cNo, replyNo } = readReplyContext(textarea);
+  if (cNo) {
+    payload.c_no = cNo;
+  }
+  if (replyNo) {
+    payload.reply_no = replyNo;
+  }
 
   try {
     const response = await fetch('/dccon/insert_icon', {
