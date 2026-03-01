@@ -32,7 +32,7 @@ interface AutoRefresherType {
   start(runImmediately?: boolean): void;
   stop(): void;
   scheduleNextCheck(currentGenerationId: number): void;
-  restoreOriginalTitle(): void;
+  restoreOriginalTitle(resetUnreadCount?: boolean): void;
   checkNewPosts(currentGenerationId: number): Promise<void>;
   getHighlightDurationSeconds(): number;
   getHighlightColor(): string;
@@ -110,11 +110,19 @@ const AutoRefresher: AutoRefresherType = {
     }, nextInterval);
   },
 
-  restoreOriginalTitle(): void {
+  restoreOriginalTitle(resetUnreadCount = false): void {
+    if (resetUnreadCount) {
+      this.newPostCountInTitle = 0;
+    }
+
+    if (this.newPostCountInTitle > 0 && !document.hasFocus()) {
+      document.title = `(${this.newPostCountInTitle}) ${this.originalTitle}`;
+      return;
+    }
+
     if (document.title !== this.originalTitle) {
       document.title = this.originalTitle;
     }
-    this.newPostCountInTitle = 0;
   },
 
   async checkNewPosts(currentGenerationId: number): Promise<void> {
@@ -268,7 +276,7 @@ const AutoRefresher: AutoRefresherType = {
       if (newPostRows.length > 0) {
         if (!document.hasFocus()) {
           this.newPostCountInTitle += newPostRows.length;
-          document.title = `(${this.newPostCountInTitle}) ${this.originalTitle}`;
+          this.restoreOriginalTitle();
         }
         this.insertAndTrimPosts(currentTbody, newPostRows);
       }
@@ -314,6 +322,7 @@ const AutoRefresher: AutoRefresherType = {
     row.style.removeProperty('--dc-new-post-highlight-color');
     row.style.removeProperty('--dc-new-post-highlight-duration');
     delete row.dataset.dcHighlightAnimating;
+    delete row.dataset.dcHighlightPersist;
   },
 
   applyHighlightToRow(row: HTMLTableRowElement): void {
@@ -343,13 +352,36 @@ const AutoRefresher: AutoRefresherType = {
     requestAnimationFrame(() => row.classList.add('highlight-start'));
 
     window.setTimeout(() => {
+      if (!document.hasFocus()) {
+        row.dataset.dcHighlightPersist = 'true';
+        row.classList.remove('highlight-start');
+        row.style.backgroundColor = highlightColor;
+        delete row.dataset.dcHighlightAnimating;
+        return;
+      }
       this.clearHighlightStyles(row);
     }, highlightDuration * 1000);
   },
 
   applyPendingHighlights(root: ParentNode = document): void {
+    const highlightDuration = this.getHighlightDurationSeconds();
+    const highlightColor = this.getHighlightColor();
     const pendingRows = root.querySelectorAll<HTMLTableRowElement>('tr.new-post-highlight');
-    pendingRows.forEach((row) => this.applyHighlightToRow(row));
+    pendingRows.forEach((row) => {
+      if (row.dataset.dcHighlightPersist === 'true') {
+        if (highlightDuration === 0) {
+          this.clearHighlightStyles(row);
+          return;
+        }
+        row.classList.add('new-post-highlight');
+        row.classList.remove('highlight-start');
+        row.style.setProperty('--dc-new-post-highlight-color', highlightColor);
+        row.style.backgroundColor = highlightColor;
+        return;
+      }
+
+      this.applyHighlightToRow(row);
+    });
   },
 
   insertAndTrimPosts(
@@ -412,6 +444,9 @@ const AutoRefresher: AutoRefresherType = {
       if (highlightDuration !== 0) {
         newRow.classList.add('new-post-highlight');
         newRow.style.setProperty('--dc-new-post-highlight-color', highlightColor);
+        if (!document.hasFocus()) {
+          newRow.dataset.dcHighlightPersist = 'true';
+        }
       }
       if (highlightDuration < 0) {
         newRow.style.backgroundColor = highlightColor;

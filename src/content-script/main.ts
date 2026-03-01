@@ -458,7 +458,7 @@ async function initialize(): Promise<void> {
     window.addEventListener('focus', () => {
       // 포커스가 돌아오면 background.ts가 리더를 재선출하고, leaderUpdate 메시지를 보낼 것입니다.
       // 여기서는 UI 효과만 처리합니다.
-      if (AutoRefresher.timerId) AutoRefresher.restoreOriginalTitle();
+      AutoRefresher.restoreOriginalTitle(true);
       AutoRefresher.applyPendingHighlights();
     });
 

@@ -12,6 +12,7 @@ const MACRO_Z_TAB_ID_KEY_SESSION = 'dcinside_macro_z_tab_id_session';
 const MACRO_X_TAB_ID_KEY_SESSION = 'dcinside_macro_x_tab_id_session';
 const LEADER_TAB_ID_KEY_SESSION = 'dcinside_leader_tab_id_session';
 const PAUSE_ON_INACTIVE_KEY = 'pauseOnInactiveEnabled'; // 설정 키 추가
+const AUTO_REFRESH_ALL_TABS_KEY = 'autoRefreshAllTabsEnabled';
 
 type MacroType = 'Z' | 'X';
 
@@ -44,8 +45,19 @@ async function removeLeader(): Promise<void> {
   }
 }
 
+async function isAutoRefreshAllTabsEnabled(): Promise<boolean> {
+  const settings = await chrome.storage.local.get(AUTO_REFRESH_ALL_TABS_KEY);
+  return settings[AUTO_REFRESH_ALL_TABS_KEY] === true;
+}
+
 async function electNewLeader(newLeaderId: number): Promise<void> {
   try {
+    // "모든 탭 갱신"이 켜진 상태에서는 리더 개념이 불필요하므로 비활성화합니다.
+    if (await isAutoRefreshAllTabsEnabled()) {
+      await removeLeader();
+      return;
+    }
+
     const tab = await chrome.tabs.get(newLeaderId);
 
     if (!tab.url || !tab.url.includes('/board/')) {
@@ -109,6 +121,23 @@ chrome.windows.onFocusChanged.addListener(async (windowId: number) => {
 // 탭이 활성화되면 리더 선출을 시도
 chrome.tabs.onActivated.addListener(async (activeInfo: chrome.tabs.TabActiveInfo) => {
   electNewLeader(activeInfo.tabId);
+});
+
+chrome.storage.onChanged.addListener(async (changes, areaName) => {
+  if (areaName !== 'local' || !changes[AUTO_REFRESH_ALL_TABS_KEY]) return;
+
+  const isEnabled = changes[AUTO_REFRESH_ALL_TABS_KEY].newValue === true;
+  if (isEnabled) {
+    console.log('[LeaderElection] "모든 탭 갱신" ON -> 리더 선출을 중지합니다.');
+    await removeLeader();
+    return;
+  }
+
+  console.log('[LeaderElection] "모든 탭 갱신" OFF -> 활성 탭 기준으로 리더를 재선출합니다.');
+  const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (typeof activeTab?.id === 'number') {
+    await electNewLeader(activeTab.id);
+  }
 });
 
 // 리더 탭이 닫혔을 때 리더를 null로 설정
