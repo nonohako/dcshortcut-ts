@@ -41,7 +41,7 @@ async function removeLeader(): Promise<void> {
   if (currentLeader !== null) {
     console.log(`[LeaderElection] 리더 ${currentLeader}를 해제합니다.`);
     await chrome.storage.session.set({ [LEADER_TAB_ID_KEY_SESSION]: null });
-    broadcastLeaderUpdate(null);
+    await broadcastLeaderUpdate(null);
   }
 }
 
@@ -82,7 +82,7 @@ async function electNewLeader(newLeaderId: number): Promise<void> {
     if (currentLeader !== newLeaderId) {
       console.log(`[LeaderElection] 새로운 리더 선출: 탭 ${newLeaderId}`);
       await chrome.storage.session.set({ [LEADER_TAB_ID_KEY_SESSION]: newLeaderId });
-      broadcastLeaderUpdate(newLeaderId);
+      await broadcastLeaderUpdate(newLeaderId);
     }
   } catch (e) {
     console.warn(`[LeaderElection] electNewLeader(${newLeaderId}) 실행 중 오류:`, e);
@@ -113,14 +113,14 @@ chrome.windows.onFocusChanged.addListener(async (windowId: number) => {
     // 창에 포커스가 돌아오면, 해당 창의 활성 탭으로 리더 선출 시도
     const tabs = await chrome.tabs.query({ active: true, windowId: windowId });
     if (tabs.length > 0 && typeof tabs[0].id === 'number') {
-      electNewLeader(tabs[0].id);
+      await electNewLeader(tabs[0].id);
     }
   }
 });
 
 // 탭이 활성화되면 리더 선출을 시도
 chrome.tabs.onActivated.addListener(async (activeInfo: chrome.tabs.TabActiveInfo) => {
-  electNewLeader(activeInfo.tabId);
+  await electNewLeader(activeInfo.tabId);
 });
 
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
@@ -337,7 +337,7 @@ chrome.runtime.onMessage.addListener(
             try {
               const tab = await chrome.tabs.get(senderTabId);
               if (tab.active) {
-                electNewLeader(senderTabId);
+                await electNewLeader(senderTabId);
               }
             } catch (e) {
               /* 탭이 닫히는 등의 경우 오류 발생 가능 */

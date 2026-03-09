@@ -217,19 +217,30 @@ function setupStorageListener(): void {
             settingsStore.favoritesPreviewOpacity = Number(newValue);
             break;
           case 'autoRefreshEnabled':
-            settingsStore.autoRefreshEnabled = newValue;
+            settingsStore.autoRefreshEnabled = newValue === true;
             break;
           case 'autoRefreshInterval':
-            settingsStore.autoRefreshInterval = Number(newValue);
+            {
+              const parsed = Number(newValue);
+              settingsStore.autoRefreshInterval =
+                Number.isFinite(parsed) && parsed >= 1 ? parsed : 10;
+            }
             break;
           case 'autoRefreshAllTabsEnabled':
-            settingsStore.autoRefreshAllTabsEnabled = newValue;
+            settingsStore.autoRefreshAllTabsEnabled = newValue === true;
             break;
           case 'autoRefreshHighlightColor':
-            settingsStore.autoRefreshHighlightColor = newValue;
+            settingsStore.autoRefreshHighlightColor =
+              typeof newValue === 'string' && /^#[0-9A-Fa-f]{6}$/.test(newValue)
+                ? newValue
+                : '#ffeb3b';
             break;
           case 'autoRefreshHighlightDuration':
-            settingsStore.autoRefreshHighlightDuration = Number(newValue);
+            {
+              const parsed = Number(newValue);
+              settingsStore.autoRefreshHighlightDuration =
+                Number.isFinite(parsed) && parsed >= -1 ? parsed : 2.5;
+            }
             break;
           case 'shortcutSubmitCommentKeyEnabled':
             settingsStore.shortcutSubmitCommentKeyEnabled = newValue;
@@ -241,7 +252,7 @@ function setupStorageListener(): void {
             settingsStore.shortcutToggleModalKeyEnabled = newValue;
             break;
           case 'pauseOnInactiveEnabled':
-            settingsStore.pauseOnInactiveEnabled = newValue;
+            settingsStore.pauseOnInactiveEnabled = newValue === true;
             break;
           case THEME_MODE_KEY:
             settingsStore.themeMode = isThemeMode(newValue) ? newValue : 'system';

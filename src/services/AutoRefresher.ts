@@ -75,7 +75,8 @@ const AutoRefresher: AutoRefresherType = {
     if (runImmediately) {
       console.log('[AutoRefresher] 탭 활성 복귀 감지: 즉시 새 글 확인을 실행합니다.');
       this.timerId = window.setTimeout(() => {
-        this.checkNewPosts(this.generationId);
+        this.timerId = null;
+        void this.checkNewPosts(this.generationId);
       }, 0);
       return;
     }
@@ -99,14 +100,18 @@ const AutoRefresher: AutoRefresherType = {
   scheduleNextCheck(currentGenerationId: number): void {
     if (currentGenerationId !== this.generationId || !this.settingsStore) return;
 
-    const baseInterval = this.settingsStore.autoRefreshInterval * 1000;
+    const configuredInterval = Number(this.settingsStore.autoRefreshInterval);
+    const safeIntervalSeconds =
+      Number.isFinite(configuredInterval) && configuredInterval >= 1 ? configuredInterval : 10;
+    const baseInterval = safeIntervalSeconds * 1000;
     const jitter = (Math.random() - 0.5) * baseInterval * 0.3;
     const nextInterval = baseInterval + jitter;
 
     console.log(`[AutoRefresher] 다음 확인까지 약 ${Math.round(nextInterval / 1000)}초 남음.`);
 
     this.timerId = window.setTimeout(() => {
-      this.checkNewPosts(currentGenerationId);
+      this.timerId = null;
+      void this.checkNewPosts(currentGenerationId);
     }, nextInterval);
   },
 
@@ -134,7 +139,10 @@ const AutoRefresher: AutoRefresherType = {
     }
 
     const urlAtRequestTime = Gallery.getListUrlForCurrentContext();
-    if (!urlAtRequestTime) return;
+    if (!urlAtRequestTime) {
+      this.scheduleNextCheck(currentGenerationId);
+      return;
+    }
 
     const localAbortController = this.abortController;
 
@@ -165,6 +173,7 @@ const AutoRefresher: AutoRefresherType = {
       }
 
       if (this.eventsModule.isPageLoading) {
+        this.scheduleNextCheck(currentGenerationId);
         console.warn('[AutoRefresher] 페이지 이동이 감지되어 DOM 수정을 중단합니다.');
         return;
       }
@@ -223,7 +232,10 @@ const AutoRefresher: AutoRefresherType = {
       }
 
       const fetchedTbody = fetchedDoc.querySelector('table.gall_list tbody');
-      if (!currentTbody || !fetchedTbody) return;
+      if (!currentTbody || !fetchedTbody) {
+        this.scheduleNextCheck(currentGenerationId);
+        return;
+      }
 
       let latestPostNumber = 0;
       currentTbody.querySelectorAll('tr').forEach((row) => {
@@ -366,6 +378,7 @@ const AutoRefresher: AutoRefresherType = {
   applyPendingHighlights(root: ParentNode = document): void {
     const highlightDuration = this.getHighlightDurationSeconds();
     const highlightColor = this.getHighlightColor();
+    const hasFocus = document.hasFocus();
     const pendingRows = root.querySelectorAll<HTMLTableRowElement>('tr.new-post-highlight');
     pendingRows.forEach((row) => {
       if (row.dataset.dcHighlightPersist === 'true') {
@@ -373,10 +386,15 @@ const AutoRefresher: AutoRefresherType = {
           this.clearHighlightStyles(row);
           return;
         }
-        row.classList.add('new-post-highlight');
-        row.classList.remove('highlight-start');
-        row.style.setProperty('--dc-new-post-highlight-color', highlightColor);
-        row.style.backgroundColor = highlightColor;
+        if (highlightDuration < 0 || !hasFocus) {
+          row.classList.add('new-post-highlight');
+          row.classList.remove('highlight-start');
+          row.style.setProperty('--dc-new-post-highlight-color', highlightColor);
+          row.style.backgroundColor = highlightColor;
+          return;
+        }
+        delete row.dataset.dcHighlightPersist;
+        this.applyHighlightToRow(row);
         return;
       }
 
