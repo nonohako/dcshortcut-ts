@@ -364,13 +364,6 @@ const AutoRefresher: AutoRefresherType = {
     requestAnimationFrame(() => row.classList.add('highlight-start'));
 
     window.setTimeout(() => {
-      if (!document.hasFocus()) {
-        row.dataset.dcHighlightPersist = 'true';
-        row.classList.remove('highlight-start');
-        row.style.backgroundColor = highlightColor;
-        delete row.dataset.dcHighlightAnimating;
-        return;
-      }
       this.clearHighlightStyles(row);
     }, highlightDuration * 1000);
   },
