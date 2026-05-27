@@ -3,7 +3,7 @@
 디시인사이드를 키보드만으로 이용하는 것을 지향하는 프로젝트입니다.
 자주 쓰는 동작을 단축키로 실행하고, 즐겨찾는 갤러리 이동 단축키/게시글 탐색 단축키/디시콘 즐겨찾기 기능을 지원합니다.
 
-![Version](https://img.shields.io/badge/version-0.3.2-2f855a)
+![Version](https://img.shields.io/badge/version-0.3.8-2f855a)
 ![License](https://img.shields.io/badge/license-MIT-1f6feb)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![Vue](https://img.shields.io/badge/Vue-3.x-42b883)
