@@ -28,6 +28,7 @@ interface AutoRefresherType {
   newPostCountInTitle: number;
   abortController: AbortController | null;
   generationId: number;
+  isActive: boolean;
   init(settingsStore: SettingsStore, postsModule: PostsModule, eventsModule: EventsModule): void;
   start(runImmediately?: boolean): void;
   stop(): void;
@@ -55,6 +56,7 @@ const AutoRefresher: AutoRefresherType = {
   newPostCountInTitle: 0,
   abortController: null,
   generationId: 0,
+  isActive: false,
 
   init(settingsStore: SettingsStore, postsModule: PostsModule, eventsModule: EventsModule) {
     this.settingsStore = settingsStore;
@@ -65,10 +67,17 @@ const AutoRefresher: AutoRefresherType = {
   },
 
   start(runImmediately = false) {
-    if (this.timerId || this.abortController || !this.settingsStore?.autoRefreshEnabled) return;
+    if (
+      this.generationId !== 0 ||
+      this.timerId ||
+      this.abortController ||
+      !this.settingsStore?.autoRefreshEnabled
+    ) {
+      return;
+    }
 
     this.generationId = Date.now();
-    this.abortController = new AbortController();
+    this.isActive = true;
     this.restoreOriginalTitle();
 
     console.log('[AutoRefresher] 자동 새로고침을 시작합니다.');
@@ -85,6 +94,8 @@ const AutoRefresher: AutoRefresherType = {
   },
 
   stop(): void {
+    this.isActive = false;
+    this.generationId = 0;
     if (this.timerId) {
       console.log('[AutoRefresher] 예약된 확인을 중지합니다.');
       clearTimeout(this.timerId);
@@ -98,7 +109,7 @@ const AutoRefresher: AutoRefresherType = {
   },
 
   scheduleNextCheck(currentGenerationId: number): void {
-    if (currentGenerationId !== this.generationId || !this.settingsStore) return;
+    if (!this.isActive || currentGenerationId !== this.generationId || !this.settingsStore) return;
 
     const configuredInterval = Number(this.settingsStore.autoRefreshInterval);
     const safeIntervalSeconds =
@@ -131,7 +142,12 @@ const AutoRefresher: AutoRefresherType = {
   },
 
   async checkNewPosts(currentGenerationId: number): Promise<void> {
-    if (currentGenerationId !== this.generationId || !this.postsModule || !this.eventsModule) {
+    if (
+      !this.isActive ||
+      currentGenerationId !== this.generationId ||
+      !this.postsModule ||
+      !this.eventsModule
+    ) {
       console.warn(
         `[AutoRefresher] 오래된 세대 작업(${currentGenerationId})이거나 의존성이 없어 중단됩니다.`
       );
@@ -144,11 +160,13 @@ const AutoRefresher: AutoRefresherType = {
       return;
     }
 
-    const localAbortController = this.abortController;
+    const localAbortController = new AbortController();
+    this.abortController = localAbortController;
+    let shouldScheduleNextCheck = false;
 
     try {
       const response = await fetch(urlAtRequestTime, {
-        signal: localAbortController!.signal,
+        signal: localAbortController.signal,
         credentials: 'include',
         redirect: 'follow',
         headers: {
@@ -169,11 +187,12 @@ const AutoRefresher: AutoRefresherType = {
 
       const urlAtResponseTime = Gallery.getListUrlForCurrentContext();
       if (currentGenerationId !== this.generationId || urlAtRequestTime !== urlAtResponseTime) {
+        shouldScheduleNextCheck = true;
         return;
       }
 
       if (this.eventsModule.isPageLoading) {
-        this.scheduleNextCheck(currentGenerationId);
+        shouldScheduleNextCheck = true;
         console.warn('[AutoRefresher] 페이지 이동이 감지되어 DOM 수정을 중단합니다.');
         return;
       }
@@ -233,7 +252,7 @@ const AutoRefresher: AutoRefresherType = {
 
       const fetchedTbody = fetchedDoc.querySelector('table.gall_list tbody');
       if (!currentTbody || !fetchedTbody) {
-        this.scheduleNextCheck(currentGenerationId);
+        shouldScheduleNextCheck = true;
         return;
       }
 
@@ -293,17 +312,17 @@ const AutoRefresher: AutoRefresherType = {
         this.insertAndTrimPosts(currentTbody, newPostRows);
       }
 
-      this.scheduleNextCheck(currentGenerationId);
+      shouldScheduleNextCheck = true;
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           console.log(`[AutoRefresher] Fetch (세대: ${currentGenerationId})가 중단되었습니다.`);
-        } else if (error.message.includes('Failed to fetch')) {
+        } else if (error instanceof TypeError || error.message.includes('Failed to fetch')) {
           console.warn(
             `[AutoRefresher] 'Failed to fetch' 오류 발생. 다음 주기에 재시도합니다.`,
             error
           );
-          this.scheduleNextCheck(currentGenerationId);
+          shouldScheduleNextCheck = true;
         } else {
           console.error('[AutoRefresher] 예기치 않은 오류 발생:', error);
           this.stop();
@@ -312,6 +331,19 @@ const AutoRefresher: AutoRefresherType = {
       } else {
         console.error('[AutoRefresher] 알 수 없는 타입의 오류 발생:', error);
         this.stop();
+      }
+    } finally {
+      if (this.abortController === localAbortController) {
+        this.abortController = null;
+      }
+
+      if (
+        shouldScheduleNextCheck &&
+        this.isActive &&
+        currentGenerationId === this.generationId &&
+        !this.timerId
+      ) {
+        this.scheduleNextCheck(currentGenerationId);
       }
     }
   },
