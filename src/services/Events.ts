@@ -93,6 +93,10 @@ interface EventsModuleType {
   checkAndLoadInfiniteScroll(): Promise<void>;
   loadNextPageContentInfinite(showBoundaryAlert?: boolean): Promise<void>;
   findPaginationLink(direction?: 'prev' | 'next'): HTMLAnchorElement | null;
+  resolvePaginationTargetUrl(
+    direction: 'prev' | 'next',
+    targetLinkElement: HTMLAnchorElement
+  ): Promise<string>;
   fetchPage(url: string): Promise<FetchedPage>;
   cycleProfile(direction?: 'prev' | 'next'): Promise<void>;
   getLastValidPostLink(doc: Document, baseURI: string): string | null;
@@ -567,6 +571,53 @@ const Events: EventsModuleType = {
     return (
       targetLinkElement?.hasAttribute('href') ? targetLinkElement : null
     ) as HTMLAnchorElement | null;
+  },
+
+  async resolvePaginationTargetUrl(
+    direction: 'prev' | 'next',
+    targetLinkElement: HTMLAnchorElement
+  ): Promise<string> {
+    if (direction !== 'prev' || !targetLinkElement.classList.contains('search_prev')) {
+      return targetLinkElement.href;
+    }
+
+    const firstPageUrl = new URL(targetLinkElement.href);
+    const targetSearchPos = firstPageUrl.searchParams.get('search_pos');
+
+    const { doc, baseURI } = await this.fetchPage(firstPageUrl.toString());
+    let targetPagingWrap = doc.querySelector('.bottom_paging_wrap.re, .bottom_paging_wrapre');
+    if (!targetPagingWrap) {
+      const normalPagingWraps = doc.querySelectorAll('.bottom_paging_wrap');
+      if (normalPagingWraps.length > 1) {
+        targetPagingWrap = normalPagingWraps[1];
+      } else if (normalPagingWraps.length === 1) {
+        targetPagingWrap = normalPagingWraps[0];
+      }
+    }
+
+    const targetPagingBox = targetPagingWrap?.querySelector('.bottom_paging_box');
+    if (!targetPagingBox) return targetLinkElement.href;
+
+    let lastPage = 1;
+    const currentPage = Number(targetPagingBox.querySelector('em')?.textContent?.trim());
+    if (Number.isFinite(currentPage)) {
+      lastPage = Math.max(lastPage, currentPage);
+    }
+
+    targetPagingBox.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
+      const linkUrl = new URL(link.getAttribute('href') ?? '', baseURI);
+      if (linkUrl.searchParams.get('search_pos') !== targetSearchPos) return;
+
+      const page = Number(linkUrl.searchParams.get('page'));
+      if (Number.isFinite(page)) {
+        lastPage = Math.max(lastPage, page);
+      }
+    });
+
+    if (!Number.isFinite(lastPage) || lastPage <= 1) return targetLinkElement.href;
+
+    firstPageUrl.searchParams.set('page', String(lastPage));
+    return firstPageUrl.toString();
   },
 
   async fetchPage(url: string): Promise<FetchedPage> {
@@ -1350,11 +1401,13 @@ const Events: EventsModuleType = {
           break;
         }
 
+        const targetLinkUrl = await this.resolvePaginationTargetUrl(direction, targetLinkElement);
+
         if (mode === 'ajax') {
-          await this.loadPageContentAjax(targetLinkElement.href);
+          await this.loadPageContentAjax(targetLinkUrl);
         } else {
           sessionStorage.setItem(AS_FULL_LOAD_SCROLL_KEY, 'true');
-          window.location.href = targetLinkElement.href;
+          window.location.href = targetLinkUrl;
         }
         break;
       }
