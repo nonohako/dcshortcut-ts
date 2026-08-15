@@ -8,83 +8,37 @@ console.log('👋 Popup script (TypeScript) loaded!');
 
 const THEME_MODE_KEY = 'dcinside_theme_mode';
 
-/**
- * @type ShortcutAction
- * @description 커스터마이징 가능한 단축키 액션의 종류를 나타내는 리터럴 타입.
- */
-type ShortcutAction =
-  | 'W'
-  | 'C'
-  | 'D'
-  | 'R'
-  | 'Q'
-  | 'E'
-  | 'F'
-  | 'G'
-  | 'A'
-  | 'S'
-  | 'GallerySearch'
-  | 'GlobalSearch'
-  | 'Z'
-  | 'X'
-  | 'PrevProfile'
-  | 'NextProfile';
+// 팝업과 content script가 런타임 모듈을 공유하면 Rollup이 ESM 공용 청크를 생성합니다.
+// Chrome content script는 classic script이므로 팝업 표시용 데이터는 이 엔트리에 둡니다.
+const POPUP_SHORTCUT_DEFINITIONS = [
+  { action: 'W', defaultKey: 'W', label: '글쓰기' },
+  { action: 'C', defaultKey: 'C', label: '댓글 입력' },
+  { action: 'D', defaultKey: 'D', label: '댓글 이동' },
+  { action: 'R', defaultKey: 'R', label: '새로고침' },
+  { action: 'Q', defaultKey: 'Q', label: '최상단 스크롤' },
+  { action: 'E', defaultKey: 'E', label: '글 목록 스크롤' },
+  { action: 'F', defaultKey: 'F', label: '전체글' },
+  { action: 'G', defaultKey: 'G', label: '개념글' },
+  { action: 'A', defaultKey: 'A', label: '다음 페이지' },
+  { action: 'S', defaultKey: 'S', label: '이전 페이지' },
+  { action: 'GallerySearch', defaultKey: 'V', label: '갤러리 내부 검색' },
+  { action: 'GlobalSearch', defaultKey: 'Alt+V', label: '통합 검색' },
+  { action: 'Z', defaultKey: 'Z', label: '다음 글' },
+  { action: 'X', defaultKey: 'X', label: '이전 글' },
+  { action: 'PrevProfile', defaultKey: '[', label: '이전 폴더' },
+  { action: 'NextProfile', defaultKey: ']', label: '다음 폴더' },
+  { action: 'SubmitComment', defaultKey: 'Alt+D', label: '댓글 등록' },
+  { action: 'SubmitImagePost', defaultKey: 'Alt+W', label: '글 등록' },
+  { action: 'ToggleModal', defaultKey: 'Alt+`', label: '즐겨찾기창 열기' },
+] as const;
 
-/**
- * @description 단축키 정보를 담고 있는 객체.
- */
-const shortcutData = {
-  // 사용자가 키를 변경할 수 있는 단축키 목록
-  customizable: {
-    W: '글쓰기',
-    C: '댓글 입력',
-    D: '댓글 이동',
-    R: '새로고침',
-    Q: '최상단 스크롤',
-    E: '글 목록 스크롤',
-    F: '전체글',
-    G: '개념글',
-    A: '다음 페이지',
-    S: '이전 페이지',
-    GallerySearch: '갤러리 내부 검색',
-    GlobalSearch: '통합 검색',
-    Z: '다음 글',
-    X: '이전 글',
-    PrevProfile: '이전 프로필',
-    NextProfile: '다음 프로필',
-  } as Record<ShortcutAction, string>,
-  // 고정된 단축키 목록
-  fixed: {
-    'Alt + `': '즐겨찾기 열기',
-    'Alt + 0-9': '즐겨찾기 이동/등록',
-    'ALT + W': '글쓰기 등록',
-    'Alt + D': '댓글 등록',
-    'Alt + Z / X': '자동 넘김 시작/중지',
-    '` 또는 .': '글 번호로 이동',
-    '0-9': '목록의 글 바로가기',
-  } as Record<string, string>,
-};
+const getPopupShortcutKeyStorageKey = (action: string): string => `shortcut${action}Key`;
 
-/**
- * @description 커스터마이징 가능한 단축키의 기본 키 값을 정의하는 객체.
- */
-const defaultKeys: Record<ShortcutAction, string> = {
-  W: 'W',
-  C: 'C',
-  D: 'D',
-  R: 'R',
-  Q: 'Q',
-  E: 'E',
-  F: 'F',
-  G: 'G',
-  A: 'A',
-  S: 'S',
-  GallerySearch: 'V',
-  GlobalSearch: 'Alt+V',
-  Z: 'Z',
-  X: 'X',
-  PrevProfile: '[',
-  NextProfile: ']',
+const FIXED_SHORTCUTS: Record<string, string> = {
+  'Alt + 0-9': '즐겨찾기 이동/등록',
+  'Alt + Z / X': '자동 넘김 시작/중지',
+  '` 또는 .': '글 번호로 이동',
+  '0-9': '목록의 글 바로가기',
 };
 
 // =================================================================
@@ -175,9 +129,9 @@ async function loadThemeMode(): Promise<ThemeMode> {
 async function loadSettings(): Promise<Record<string, string>> {
   // 불러올 키 목록을 생성합니다. (예: { shortcutWKey: 'W', shortcutCKey: 'C', ... })
   const keysToGet = Object.fromEntries(
-    Object.keys(defaultKeys).map((action) => [
-      `shortcut${action}Key`,
-      defaultKeys[action as ShortcutAction],
+    POPUP_SHORTCUT_DEFINITIONS.map(({ action, defaultKey }) => [
+      getPopupShortcutKeyStorageKey(action),
+      defaultKey,
     ])
   );
 
@@ -238,10 +192,8 @@ function renderCustomShortcuts(settings: Record<string, string>): void {
   if (!customShortcutListEl) return;
   customShortcutListEl.innerHTML = ''; // 기존 목록 초기화
 
-  // customizable 객체를 순회하며 각 단축키에 대한 리스트 아이템을 생성하고 추가합니다.
-  for (const action in shortcutData.customizable) {
-    const key = settings[`shortcut${action}Key`] || defaultKeys[action as ShortcutAction];
-    const label = shortcutData.customizable[action as ShortcutAction];
+  for (const { action, defaultKey, label } of POPUP_SHORTCUT_DEFINITIONS) {
+    const key = settings[getPopupShortcutKeyStorageKey(action)] || defaultKey;
     customShortcutListEl.appendChild(createListItem(key, label));
   }
 }
@@ -254,8 +206,8 @@ function renderFixedShortcuts(): void {
   fixedShortcutListEl.innerHTML = ''; // 기존 목록 초기화
 
   // fixed 객체를 순회하며 각 단축키에 대한 리스트 아이템을 생성하고 추가합니다.
-  for (const key in shortcutData.fixed) {
-    const label = shortcutData.fixed[key];
+  for (const key in FIXED_SHORTCUTS) {
+    const label = FIXED_SHORTCUTS[key];
     fixedShortcutListEl.appendChild(createListItem(key, label));
   }
 }

@@ -44,23 +44,23 @@
         <div class="shortcut-section">
           <div class="shortcut-section-title">등록 (Alt 필수)</div>
           <ShortcutToggle :label="getShortcutLabel('SubmitImagePost')"
-            :enabled="settingsStore.shortcutSubmitImagePostKeyEnabled"
+            :enabled="settingsStore.shortcutEnabled.shortcutSubmitImagePostEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutSubmitImagePostKey"
-            storageKeyEnabled="shortcutSubmitImagePostKeyEnabled" storageKeyKey="shortcutSubmitImagePostKey"
+            storageKeyEnabled="shortcutSubmitImagePostEnabled" storageKeyKey="shortcutSubmitImagePostKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <ShortcutToggle :label="getShortcutLabel('SubmitComment')"
-            :enabled="settingsStore.shortcutSubmitCommentKeyEnabled"
+            :enabled="settingsStore.shortcutEnabled.shortcutSubmitCommentEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutSubmitCommentKey"
-            storageKeyEnabled="shortcutSubmitCommentKeyEnabled" storageKeyKey="shortcutSubmitCommentKey"
+            storageKeyEnabled="shortcutSubmitCommentEnabled" storageKeyKey="shortcutSubmitCommentKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
         </div>
 
         <div class="shortcut-section">
-          <div class="shortcut-section-title">즐겨찾기/프로필</div>
+          <div class="shortcut-section-title">즐겨찾기/폴더</div>
           <ShortcutToggle :label="getShortcutLabel('ToggleModal')"
-            :enabled="settingsStore.shortcutToggleModalKeyEnabled"
+            :enabled="settingsStore.shortcutEnabled.shortcutToggleModalEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutToggleModalKey"
-            storageKeyEnabled="shortcutToggleModalKeyEnabled" storageKeyKey="shortcutToggleModalKey"
+            storageKeyEnabled="shortcutToggleModalEnabled" storageKeyKey="shortcutToggleModalKey"
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <ShortcutToggle :label="getShortcutLabel('PrevProfile')"
             :enabled="settingsStore.shortcutEnabled.shortcutPrevProfileEnabled"
@@ -92,7 +92,7 @@
               <option value="light">라이트</option>
             </select>
           </div>
-          <ShortcutToggle label="ALT + 숫자 - 해당 번호 즐겨찾기로 바로 이동" :enabled="settingsStore.altNumberEnabled"
+          <ShortcutToggle label="즐겨찾기 단축키 - 해당 즐겨찾기로 바로 이동" :enabled="settingsStore.altNumberEnabled"
             storageKeyEnabled="altNumberEnabled" @update:enabled="updateAltNumberEnabled" :isKeyEditable="false" />
           <ShortcutToggle label="숫자키 - 라벨 글 이동" :enabled="settingsStore.numberNavigationEnabled"
             storageKeyEnabled="numberNavigationEnabled" @update:enabled="updateNumberNavigationEnabled"
@@ -120,6 +120,32 @@
         <div class="shortcut-section">
           <div class="shortcut-section-title">페이지 이동 방식</div>
           <PageNavModeSelector :currentMode="settingsStore.pageNavigationMode" @update:mode="updatePageNavMode" />
+        </div>
+
+        <div class="shortcut-section other-settings-section">
+          <div class="shortcut-section-title">기타</div>
+          <div class="all-switches-action">
+            <div class="all-switches-description">
+              <strong>모든 스위치 일괄 설정</strong>
+              <span>단축키 조합과 설정값, 즐겨찾기 데이터는 유지하고 ON/OFF 항목만 변경합니다.</span>
+            </div>
+            <div class="all-switches-buttons">
+              <button
+                class="dc-button dc-button-blue all-switches-button"
+                :disabled="isUpdatingAllSwitches || !hasDisabledSwitches"
+                @click="setAllSwitches(true)"
+              >
+                {{ allSwitchesTarget === 'on' ? '켜는 중...' : hasDisabledSwitches ? '모두 켜기' : '모두 켜짐' }}
+              </button>
+              <button
+                class="dc-button dc-button-red all-switches-button"
+                :disabled="isUpdatingAllSwitches || !hasEnabledSwitches"
+                @click="setAllSwitches(false)"
+              >
+                {{ allSwitchesTarget === 'off' ? '끄는 중...' : hasEnabledSwitches ? '모두 끄기' : '모두 꺼짐' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -284,8 +310,16 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick, type Ref, type ComputedRef } from 'vue';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useFavoritesStore } from '@/stores/favoritesStore';
-import type { FavoriteGalleryInfo, FavoriteGalleries, FavoriteProfiles } from '@/stores/favoritesStore';
+import {
+  normalizeFavoritesData,
+  resolveActiveFavoriteFolderId,
+  useFavoritesStore,
+} from '@/stores/favoritesStore';
+import type {
+  FavoriteGalleryInfo,
+  LegacyFavoriteGalleries,
+  LegacyFavoriteProfiles,
+} from '@/stores/favoritesStore';
 import type { DcconAliasMap, DcconAliasTarget, ThemeMode } from '@/types';
 import { useUiStore } from '@/stores/uiStore';
 import UI from '@/services/UI';
@@ -298,6 +332,13 @@ import {
   FAVORITE_GALLERIES_KEY,
 } from '@/services/Global';
 import Storage from '@/services/Storage';
+import {
+  DEFAULT_SHORTCUT_KEYS,
+  SHORTCUT_ACTIONS,
+  isAltRequiredShortcut,
+  isShortcutAction,
+  type ShortcutAction,
+} from '@/config/shortcuts';
 import PageNavModeSelector from './PageNavModeSelector.vue';
 import ShortcutToggle from './ShortcutToggle.vue';
 import FootnoteTrigger from './FootnoteTrigger.vue';
@@ -311,7 +352,6 @@ type TabName = 'shortcuts' | 'advanced' | 'dccon' | 'refresh' | 'macros' | 'data
 type ShortcutLabelKey = 'W' | 'C' | 'D' | 'R' | 'Q' | 'E' | 'F' | 'G' | 'A' | 'S' | 'GallerySearch' | 'GlobalSearch' | 'Z' | 'X' |
   'PrevProfile' | 'NextProfile' | 'SubmitImagePost' | 'SubmitComment' |
   'ToggleModal' | 'DRefresh' | 'MacroZ' | 'MacroX';
-const ALT_REQUIRED_ACTIONS = new Set(['SubmitComment', 'SubmitImagePost', 'ToggleModal']);
 
 interface DcconAliasListItem extends DcconAliasTarget {
   aliases: string[];
@@ -331,10 +371,11 @@ interface SettingsBackupFile {
 interface RestorePlan {
   snapshot: LocalStorageSnapshot;
   migratedFromLegacyFavorites: boolean;
+  scope: 'settings' | 'favorites';
 }
 
 const SETTINGS_BACKUP_FILE_TYPE = 'dcshortcut-settings-backup';
-const SETTINGS_BACKUP_FILE_VERSION = 1;
+const SETTINGS_BACKUP_FILE_VERSION = 2;
 const RESET_CONFIRM_TEXT = '초기화';
 const DEFAULT_PROFILE_NAME = '기본';
 const GALLERY_TYPES = new Set<FavoriteGalleryInfo['galleryType']>(['board', 'mgallery', 'mini']);
@@ -357,6 +398,7 @@ const dcconAliasItems = ref<DcconAliasListItem[]>([]);
 const dcconAliasSearchQuery = ref<string>('');
 const isResetDialogVisible = ref<boolean>(false);
 const resetConfirmInput = ref<string>('');
+const allSwitchesTarget = ref<'on' | 'off' | null>(null);
 let debounceTimer: number | null = null;
 
 // =================================================================
@@ -365,12 +407,11 @@ let debounceTimer: number | null = null;
 
 const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(() => {
   const keys = settingsStore.shortcutKeys;
-  const defaults = settingsStore.defaultShortcutKeys;
-  const getKey = (action: string) =>
+  const getKey = (action: ShortcutAction) =>
     normalizeShortcutWithFallback(
       keys[`shortcut${action}Key`],
-      defaults[action as keyof typeof defaults] || '',
-      ALT_REQUIRED_ACTIONS.has(action)
+      DEFAULT_SHORTCUT_KEYS[action],
+      isAltRequiredShortcut(action)
     );
 
   return {
@@ -388,8 +429,8 @@ const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(()
     GlobalSearch: `${getKey('GlobalSearch')} - 통합 검색`,
     Z: `${getKey('Z')} - 다음 글`,
     X: `${getKey('X')} - 이전 글`,
-    PrevProfile: `${getKey('PrevProfile')} - 이전 프로필`,
-    NextProfile: `${getKey('NextProfile')} - 다음 프로필`,
+    PrevProfile: `${getKey('PrevProfile')} - 이전 폴더`,
+    NextProfile: `${getKey('NextProfile')} - 다음 폴더`,
     SubmitImagePost: `${getKey('SubmitImagePost')} - 글 등록`,
     SubmitComment: `${getKey('SubmitComment')} - 댓글 등록`,
     ToggleModal: `${getKey('ToggleModal')} - 즐겨찾기창 열기`,
@@ -400,6 +441,27 @@ const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(()
 });
 
 const getShortcutLabel = (action: ShortcutLabelKey): string => dynamicLabels.value[action] || action;
+
+const allSwitchStates = computed<boolean[]>(() => [
+  ...SHORTCUT_ACTIONS.map(
+    (action) => settingsStore.shortcutEnabled[`shortcut${action}Enabled`] !== false
+  ),
+  settingsStore.altNumberEnabled,
+  settingsStore.numberLabelsEnabled,
+  settingsStore.numberNavigationEnabled,
+  settingsStore.showDateInListEnabled,
+  settingsStore.macroZEnabled,
+  settingsStore.macroXEnabled,
+  settingsStore.shortcutDRefreshCommentEnabled,
+  settingsStore.favoritesPreviewEnabled,
+  settingsStore.autoRefreshEnabled,
+  settingsStore.autoRefreshAllTabsEnabled,
+  settingsStore.pauseOnInactiveEnabled,
+  settingsStore.dcconAliasEnabled,
+]);
+const hasEnabledSwitches = computed(() => allSwitchStates.value.some(Boolean));
+const hasDisabledSwitches = computed(() => allSwitchStates.value.some((enabled) => !enabled));
+const isUpdatingAllSwitches = computed(() => allSwitchesTarget.value !== null);
 
 const safeTrim = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const normalizeAliasKey = (alias: string): string => safeTrim(alias).toLocaleLowerCase();
@@ -658,10 +720,10 @@ const normalizeFavoriteGallery = (value: unknown): FavoriteGalleryInfo | null =>
   };
 };
 
-const parseFavoriteGalleries = (value: unknown): FavoriteGalleries | null => {
+const parseFavoriteGalleries = (value: unknown): LegacyFavoriteGalleries | null => {
   if (!isRecord(value)) return null;
 
-  const parsedGalleries: FavoriteGalleries = {};
+  const parsedGalleries: LegacyFavoriteGalleries = {};
   for (const [slotKey, slotValue] of Object.entries(value)) {
     if (!FAVORITES_SLOT_KEY_REGEX.test(slotKey)) return null;
     const gallery = normalizeFavoriteGallery(slotValue);
@@ -671,14 +733,14 @@ const parseFavoriteGalleries = (value: unknown): FavoriteGalleries | null => {
   return parsedGalleries;
 };
 
-const parseLegacyFavoritesBackup = (value: unknown): FavoriteProfiles | null => {
+const parseLegacyFavoritesBackup = (value: unknown): LegacyFavoriteProfiles | null => {
   const singleProfile = parseFavoriteGalleries(value);
   if (singleProfile) {
     return { [DEFAULT_PROFILE_NAME]: singleProfile };
   }
 
   if (!isRecord(value)) return null;
-  const parsedProfiles: FavoriteProfiles = {};
+  const parsedProfiles: LegacyFavoriteProfiles = {};
 
   for (const [profileName, profileValue] of Object.entries(value)) {
     const parsedProfile = parseFavoriteGalleries(profileValue);
@@ -703,13 +765,46 @@ const parseSettingsBackupFile = (value: unknown): SettingsBackupFile | null => {
   };
 };
 
+const normalizeFavoritesInSnapshot = (
+  snapshot: LocalStorageSnapshot,
+  scope: RestorePlan['scope'],
+  forceLegacyNotice = false
+): RestorePlan => {
+  if (!Object.prototype.hasOwnProperty.call(snapshot, FAVORITE_GALLERIES_KEY)) {
+    return { snapshot, migratedFromLegacyFavorites: forceLegacyNotice, scope };
+  }
+
+  const rawFavorites = snapshot[FAVORITE_GALLERIES_KEY];
+  const normalizedFavorites = normalizeFavoritesData(rawFavorites);
+  if (!normalizedFavorites) {
+    throw new Error('백업 파일의 즐겨찾기 데이터 형식이 올바르지 않습니다.');
+  }
+
+  const wasVersion2 =
+    isRecord(rawFavorites) &&
+    rawFavorites.version === 2 &&
+    Array.isArray(rawFavorites.folders);
+  const activeFolderId = resolveActiveFavoriteFolderId(
+    normalizedFavorites,
+    snapshot[ACTIVE_FAVORITES_PROFILE_KEY]
+  );
+
+  return {
+    snapshot: {
+      ...snapshot,
+      [FAVORITE_GALLERIES_KEY]: normalizedFavorites,
+      [ACTIVE_FAVORITES_PROFILE_KEY]: activeFolderId,
+    },
+    migratedFromLegacyFavorites: forceLegacyNotice || !wasVersion2,
+    scope,
+  };
+};
+
 const buildRestorePlan = async (parsedData: unknown): Promise<RestorePlan> => {
   const settingsBackup = parseSettingsBackupFile(parsedData);
   if (settingsBackup) {
-    return {
-      snapshot: settingsBackup.data,
-      migratedFromLegacyFavorites: false,
-    };
+    // v1 전체 설정 백업 내부에도 구형 즐겨찾기 구조가 들어갈 수 있습니다.
+    return normalizeFavoritesInSnapshot(settingsBackup.data, 'settings');
   }
 
   const legacyFavorites = parseLegacyFavoritesBackup(parsedData);
@@ -720,18 +815,19 @@ const buildRestorePlan = async (parsedData: unknown): Promise<RestorePlan> => {
   const currentSnapshot = await getLocalStorageSnapshot();
   const nextActiveProfile = Object.keys(legacyFavorites)[0] ?? DEFAULT_PROFILE_NAME;
 
-  return {
-    snapshot: {
+  return normalizeFavoritesInSnapshot(
+    {
       ...currentSnapshot,
       [FAVORITE_GALLERIES_KEY]: legacyFavorites,
       [ACTIVE_FAVORITES_PROFILE_KEY]: nextActiveProfile,
     },
-    migratedFromLegacyFavorites: true,
-  };
+    'favorites',
+    true
+  );
 };
 
 const syncStateAfterStorageMutation = async (): Promise<void> => {
-  await Promise.all([settingsStore.loadSettings(), favoritesStore.loadProfiles()]);
+  await Promise.all([settingsStore.loadSettings(), favoritesStore.reloadProfiles()]);
   await loadDcconAliasItems();
 
   Posts.addNumberLabels(settingsStore.numberLabelsEnabled);
@@ -778,7 +874,7 @@ const updateThemeMode = async (event: Event): Promise<void> => {
 const updateAltNumberEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
   if (!storageKey) return;
   await settingsStore.saveAltNumberEnabled(enabled);
-  UI.showAlert(`ALT + 숫자 즐겨찾기 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
+  UI.showAlert(`즐겨찾기 단축키 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
 const updateNumberNavigationEnabled = async (
@@ -818,6 +914,34 @@ const updateShortcutEnabled = async (storageKey: string | undefined, enabled: bo
   UI.showAlert(`'${label}' 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
+const setAllSwitches = async (enabled: boolean): Promise<void> => {
+  if (isUpdatingAllSwitches.value) return;
+  if (enabled ? !hasDisabledSwitches.value : !hasEnabledSwitches.value) return;
+
+  const actionLabel = enabled ? '켤까요' : '끌까요';
+  const confirmed = window.confirm(
+    `설정창의 모든 ON/OFF 스위치를 ${actionLabel}? 단축키 조합과 설정값, 즐겨찾기 데이터는 유지됩니다.`
+  );
+  if (!confirmed) return;
+
+  allSwitchesTarget.value = enabled ? 'on' : 'off';
+  try {
+    if (enabled) await settingsStore.turnOnAllSwitches();
+    else await settingsStore.turnOffAllSwitches();
+    Posts.addNumberLabels(enabled);
+    Posts.formatDates(enabled);
+    window.handleAutoRefresherState?.();
+    UI.showAlert(`모든 스위치를 ${enabled ? '켰습니다' : '껐습니다'}.`);
+  } catch (error) {
+    console.error(`모든 스위치 ${enabled ? '켜기' : '끄기'} 중 오류:`, error);
+    UI.showAlert(
+      `모든 스위치 ${enabled ? '켜기' : '끄기'} 실패: ${getErrorMessage(error, '알 수 없는 오류가 발생했습니다.')}`
+    );
+  } finally {
+    allSwitchesTarget.value = null;
+  }
+};
+
 const updateMacroEnabled = async (storageKey: string | undefined, enabled: boolean, label: string): Promise<void> => {
   if (!storageKey) return;
   await settingsStore.saveShortcutEnabled(storageKey, enabled);
@@ -833,7 +957,7 @@ const updateShortcutDRefreshCommentEnabled = async (storageKey: string | undefin
 const updateShortcutKey = async (storageKey: string | undefined, newKey: string, label: string): Promise<void> => {
   if (!storageKey) return;
   const action = storageKey.replace('shortcut', '').replace('Key', '');
-  const isAltRequired = ['SubmitComment', 'SubmitImagePost', 'ToggleModal'].includes(action);
+  const isAltRequired = isShortcutAction(action) && isAltRequiredShortcut(action);
   const result = await settingsStore.saveShortcutKey(storageKey, newKey, isAltRequired);
   if (result.success) {
     await nextTick();
@@ -1079,9 +1203,11 @@ const handleFileRestore = async (event: Event): Promise<void> => {
     const parsedData = JSON.parse(fileText) as unknown;
     const restorePlan = await buildRestorePlan(parsedData);
 
-    const confirmMessage = restorePlan.migratedFromLegacyFavorites
+    const confirmMessage = restorePlan.scope === 'favorites'
       ? '기존 즐겨찾기 백업 파일을 감지했습니다. 현재 즐겨찾기만 파일 내용으로 덮어씌우고 나머지 설정은 유지합니다. 계속하시겠습니까?'
-      : '현재 설정을 선택한 파일 내용으로 모두 덮어쓰시겠습니까? 이 작업은 되돌릴 수 없습니다.';
+      : restorePlan.migratedFromLegacyFavorites
+        ? '구버전 즐겨찾기가 포함된 전체 설정 백업입니다. 즐겨찾기를 새 형식으로 변환한 뒤 현재 설정을 파일 내용으로 모두 덮어씁니다. 계속하시겠습니까?'
+        : '현재 설정을 선택한 파일 내용으로 모두 덮어쓰시겠습니까? 이 작업은 되돌릴 수 없습니다.';
     const confirmed = window.confirm(confirmMessage);
     if (!confirmed) {
       UI.showAlert('설정 복원이 취소되었습니다.');
@@ -1093,7 +1219,7 @@ const handleFileRestore = async (event: Event): Promise<void> => {
 
     UI.showAlert(
       restorePlan.migratedFromLegacyFavorites
-        ? '기존 즐겨찾기 백업을 설정 형식으로 마이그레이션해 복원했습니다.'
+        ? '구버전 즐겨찾기를 새 폴더 형식으로 변환해 복원했습니다.'
         : '설정이 성공적으로 복원되었습니다.'
     );
   } catch (error) {
@@ -1176,7 +1302,7 @@ onUnmounted(() => {
 }
 
 .shortcut-title {
-  font-size: 1.25rem;
+  font-size: 20px;
   font-weight: 600;
   color: var(--dc-color-text-primary);
   margin: 0 0 16px 0;
@@ -1196,13 +1322,58 @@ onUnmounted(() => {
   align-items: end;
 }
 
+.all-switches-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--dc-color-border-soft);
+  border-radius: 8px;
+  background-color: var(--dc-color-surface);
+  box-shadow: var(--dc-shadow-soft);
+  flex-shrink: 0;
+}
+
+.all-switches-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.all-switches-description {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--dc-color-text-primary);
+}
+
+.all-switches-description strong {
+  font-size: 14.5px;
+}
+
+.all-switches-description span {
+  font-size: 12px;
+  color: var(--dc-color-text-muted);
+  line-height: 1.35;
+}
+
+.all-switches-action .all-switches-button {
+  width: 104px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  flex: 0 0 auto;
+}
+
 .tab-button {
   width: 100%;
   padding: 8px 4px;
   cursor: pointer;
   border: none;
   background-color: transparent;
-  font-size: 0.83rem;
+  font-size: 13.25px;
   font-weight: 500;
   color: var(--dc-color-text-muted);
   margin-bottom: 0;
@@ -1243,7 +1414,7 @@ onUnmounted(() => {
 }
 
 .shortcut-section-title {
-  font-size: 0.95rem;
+  font-size: 15px;
   font-weight: 600;
   color: var(--dc-color-text-secondary);
   margin-bottom: 12px;
@@ -1261,7 +1432,7 @@ onUnmounted(() => {
 }
 
 .interval-label {
-  font-size: 0.9rem;
+  font-size: 14.5px;
   font-weight: 500;
   color: var(--dc-color-text-primary);
   display: inline-flex;
@@ -1273,7 +1444,7 @@ onUnmounted(() => {
   padding: 8px 10px;
   border: 1px solid var(--dc-color-border-strong);
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 14.5px;
   text-align: right;
   background: var(--dc-color-surface);
   color: var(--dc-color-text-primary);
@@ -1305,7 +1476,7 @@ onUnmounted(() => {
   border: 1px solid var(--dc-color-border-strong);
   border-radius: 6px;
   padding: 8px 10px;
-  font-size: 0.9rem;
+  font-size: 14.5px;
   background: var(--dc-color-surface);
   color: var(--dc-color-text-primary);
   outline: none;
@@ -1328,7 +1499,7 @@ onUnmounted(() => {
 }
 
 .backup-restore-note {
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--dc-color-text-muted);
   text-align: center;
   margin-top: 8px;
@@ -1341,7 +1512,7 @@ onUnmounted(() => {
   color: var(--dc-color-tooltip-text);
   border: none;
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 15px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
@@ -1455,7 +1626,7 @@ onUnmounted(() => {
 }
 
 .slider-value {
-  font-size: 0.85rem;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--dc-color-text-secondary);
   min-width: 40px;
@@ -1464,7 +1635,7 @@ onUnmounted(() => {
 }
 
 .shortcut-section-note {
-  font-size: 0.85rem;
+  font-size: 13.5px;
   color: var(--dc-color-text-muted);
   margin-bottom: 16px;
   line-height: 1.5;
@@ -1493,7 +1664,7 @@ onUnmounted(() => {
   background: var(--dc-color-surface);
   color: var(--dc-color-text-primary);
   padding: 8px 10px;
-  font-size: 0.84rem;
+  font-size: 13.5px;
 }
 
 .dccon-search-input::placeholder {
@@ -1511,7 +1682,7 @@ onUnmounted(() => {
   display: inline-block;
   margin: 0;
   padding: 6px 10px;
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 .dccon-enabled-toggle {
@@ -1523,7 +1694,7 @@ onUnmounted(() => {
 }
 
 .dccon-enabled-label {
-  font-size: 0.82rem;
+  font-size: 13px;
   font-weight: 600;
   color: var(--dc-color-text-secondary);
 }
@@ -1571,7 +1742,7 @@ onUnmounted(() => {
 }
 
 .alias-empty-state {
-  font-size: 0.85rem;
+  font-size: 13.5px;
   color: var(--dc-color-text-muted);
   border: 1px dashed var(--dc-color-border-strong);
   border-radius: 6px;
@@ -1619,7 +1790,7 @@ onUnmounted(() => {
 }
 
 .alias-item-aliases {
-  font-size: 0.85rem;
+  font-size: 13.5px;
   color: var(--dc-color-text-primary);
   line-height: 1.4;
   white-space: normal;
@@ -1639,7 +1810,7 @@ onUnmounted(() => {
   color: var(--dc-color-text-secondary);
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 0.76rem;
+  font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -1647,7 +1818,7 @@ onUnmounted(() => {
 .alias-edit-button {
   width: 28px;
   padding: 4px 0;
-  font-size: 0.88rem;
+  font-size: 14px;
 }
 
 .alias-delete-button {
@@ -1660,7 +1831,7 @@ onUnmounted(() => {
 }
 
 .warning-note {
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--dc-color-warning-text);
   background-color: var(--dc-color-warning-bg);
   border: 1px solid var(--dc-color-warning-border);
@@ -1674,7 +1845,7 @@ onUnmounted(() => {
 
 .warning-icon {
   margin-right: 8px;
-  font-size: 1rem;
+  font-size: 16px;
 }
 
 .reset-dialog-overlay {
@@ -1700,13 +1871,13 @@ onUnmounted(() => {
 
 .reset-dialog-title {
   margin: 0 0 10px;
-  font-size: 1rem;
+  font-size: 16px;
   color: var(--dc-color-text-primary);
 }
 
 .reset-dialog-message {
   margin: 0 0 12px;
-  font-size: 0.9rem;
+  font-size: 14.5px;
   color: var(--dc-color-text-secondary);
   line-height: 1.5;
 }
@@ -1720,7 +1891,7 @@ onUnmounted(() => {
   border: 1px solid var(--dc-color-border-strong);
   border-radius: 6px;
   padding: 9px 10px;
-  font-size: 0.9rem;
+  font-size: 14.5px;
   background: var(--dc-color-surface);
   color: var(--dc-color-text-primary);
   outline: none;

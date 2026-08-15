@@ -14,6 +14,8 @@
   --popup-key-text: #212529;
   --popup-danger: #d32f2f;
   --popup-danger-bg: #ffebee;
+  --popup-scrollbar-thumb: #b8c1cb;
+  --popup-scrollbar-thumb-hover: #8e9aa7;
 }
 
 :root[data-dc-theme='dark'] {
@@ -31,6 +33,38 @@
   --popup-key-text: #f0f4f8;
   --popup-danger: #ff8a80;
   --popup-danger-bg: rgba(255, 138, 128, 0.2);
+  --popup-scrollbar-thumb: #4d5966;
+  --popup-scrollbar-thumb-hover: #718091;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--popup-scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--popup-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--popup-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 body {

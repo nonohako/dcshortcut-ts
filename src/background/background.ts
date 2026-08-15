@@ -15,6 +15,8 @@ const PAUSE_ON_INACTIVE_KEY = 'pauseOnInactiveEnabled'; // 설정 키 추가
 const AUTO_REFRESH_ALL_TABS_KEY = 'autoRefreshAllTabsEnabled';
 
 type MacroType = 'Z' | 'X';
+type GlobalUiTarget = 'favorites' | 'shortcuts';
+type GlobalUiMode = 'open' | 'toggle';
 
 type MessageAction =
   | 'getMacroState'
@@ -22,12 +24,75 @@ type MessageAction =
   | 'getMyTabId'
   | 'getLeaderTabId'
   | 'contentScriptLoaded'
+  | 'ensureGlobalUi'
   | 'startMacro'
   | 'stopMacro'
   | 'leaderUpdate';
 
 interface BaseMessage {
   action: MessageAction;
+}
+
+interface EnsureGlobalUiMessage extends BaseMessage {
+  action: 'ensureGlobalUi';
+  target: GlobalUiTarget;
+  mode: GlobalUiMode;
+}
+
+const globalUiInjectionTasks = new Map<number, Promise<void>>();
+
+const getGlobalUiAction = (target: GlobalUiTarget): string =>
+  target === 'favorites' ? 'showGlobalFavoritesModal' : 'showGlobalShortcutManagerModal';
+
+async function dispatchGlobalUiAction(
+  tabId: number,
+  target: GlobalUiTarget,
+  mode: GlobalUiMode
+): Promise<boolean> {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      action: getGlobalUiAction(target),
+      mode,
+    });
+    return response?.success === true && response?.uiReady === true;
+  } catch {
+    return false;
+  }
+}
+
+async function injectGlobalUi(tabId: number): Promise<void> {
+  const runningTask = globalUiInjectionTasks.get(tabId);
+  if (runningTask) return runningTask;
+
+  const task = (async () => {
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      files: ['content-script.css'],
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content-script.js'],
+    });
+  })();
+  globalUiInjectionTasks.set(tabId, task);
+
+  try {
+    await task;
+  } finally {
+    globalUiInjectionTasks.delete(tabId);
+  }
+}
+
+async function ensureGlobalUi(
+  tabId: number,
+  target: GlobalUiTarget,
+  mode: GlobalUiMode
+): Promise<void> {
+  if (await dispatchGlobalUiAction(tabId, target, mode)) return;
+  await injectGlobalUi(tabId);
+  if (!(await dispatchGlobalUiAction(tabId, target, mode))) {
+    throw new Error('주입된 UI 콘텐츠 스크립트가 응답하지 않습니다.');
+  }
 }
 
 // =================================================================
@@ -345,6 +410,33 @@ chrome.runtime.onMessage.addListener(
           }
         })();
         return false;
+
+      case 'ensureGlobalUi':
+        (async () => {
+          if (typeof senderTabId !== 'number') {
+            sendResponse({ success: false, error: 'Sender has no tab ID.' });
+            return;
+          }
+
+          const { target, mode } = message as EnsureGlobalUiMessage;
+          if (
+            (target !== 'favorites' && target !== 'shortcuts') ||
+            (mode !== 'open' && mode !== 'toggle')
+          ) {
+            sendResponse({ success: false, error: 'Invalid global UI request.' });
+            return;
+          }
+
+          try {
+            await ensureGlobalUi(senderTabId, target, mode);
+            sendResponse({ success: true });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`[Global UI] 탭 ${senderTabId}에 UI를 열지 못했습니다.`, error);
+            sendResponse({ success: false, error: message });
+          }
+        })();
+        return true;
     }
     return false;
   }

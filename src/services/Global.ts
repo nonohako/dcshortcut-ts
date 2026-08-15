@@ -11,9 +11,14 @@ import Posts from './Posts';
 export const FAVORITE_GALLERIES_KEY = 'dcinside_favorite_galleries';
 
 /**
- * @description 현재 활성화된 즐겨찾기 프로필을 저장하는 storage 키
+ * @description 현재 활성화된 즐겨찾기 폴더 ID를 저장하는 storage 키
  */
 export const ACTIVE_FAVORITES_PROFILE_KEY = 'dcinside_active_favorites_profile';
+
+/**
+ * @description 즐겨찾기 창 크기와 폴더 패널 폭을 저장하는 storage 키
+ */
+export const FAVORITES_LAYOUT_KEY = 'dcinside_favorites_layout';
 
 /**
  * @description 페이지 이동 방식을 저장하는 storage 키 ('ajax', 'full', 'infinite')

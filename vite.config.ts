@@ -42,6 +42,32 @@ function manifestPlugin(isProduction: boolean): PluginOption {
   };
 }
 
+function classicContentScriptGuardPlugin(): PluginOption {
+  return {
+    name: 'guard-classic-content-script',
+    generateBundle(_options, bundle) {
+      for (const entryName of ['content-script', 'global-shortcuts']) {
+        const contentScript = Object.values(bundle).find(
+          (output) => output.type === 'chunk' && output.isEntry && output.name === entryName
+        );
+
+        if (!contentScript || contentScript.type !== 'chunk') {
+          this.error(`${entryName} 엔트리 번들을 찾을 수 없습니다.`);
+        }
+
+        if (contentScript.imports.length > 0 || contentScript.dynamicImports.length > 0) {
+          this.error(
+            `${entryName}에 ESM import가 생성되었습니다: ${[
+              ...contentScript.imports,
+              ...contentScript.dynamicImports,
+            ].join(', ')}`
+          );
+        }
+      }
+    },
+  };
+}
+
 // defineConfig를 함수 형태로 변경
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -50,9 +76,11 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [
       vue(),
+      classicContentScriptGuardPlugin(),
       viteStaticCopy({
         targets: [
           { src: 'icons', dest: '.' },
+          { src: 'src/content-script/style.css', dest: '.', rename: 'dc-content.css' },
         ]
       }),
       manifestPlugin(isProduction),
@@ -65,6 +93,7 @@ export default defineConfig(({ command, mode }) => {
           popup: path.resolve(__dirname, 'popup.html'),
           background: path.resolve(__dirname, 'src/background/background.ts'),
           'content-script': path.resolve(__dirname, 'src/content-script/main.ts'),
+          'global-shortcuts': path.resolve(__dirname, 'src/content-script/global-shortcuts.ts'),
         },
         output: {
           entryFileNames: `[name].js`,

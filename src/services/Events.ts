@@ -8,6 +8,14 @@ import { getShortcutComboFromEvent, normalizeShortcutWithFallback } from './Shor
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUiStore } from '@/stores/uiStore';
+import {
+  DEFAULT_SHORTCUT_KEYS,
+  SHORTCUT_ACTIONS,
+  getShortcutEnabledStorageKey,
+  getShortcutKeyStorageKey,
+  isAltRequiredShortcut,
+  type ShortcutAction,
+} from '@/config/shortcuts';
 
 // =================================================================
 // Type Definitions (타입 정의)
@@ -134,8 +142,6 @@ const COMMON_FETCH_HEADERS = {
   'Sec-Fetch-User': '?1',
   'Upgrade-Insecure-Requests': '1',
 };
-const ALT_REQUIRED_ACTIONS = new Set(['SubmitComment', 'SubmitImagePost', 'ToggleModal']);
-
 // =================================================================
 // Events Module (이벤트 모듈)
 // =================================================================
@@ -644,26 +650,26 @@ const Events: EventsModuleType = {
     if (!this.favoritesStore || !this.ui) return;
     try {
       await this.favoritesStore.loadProfiles();
-      const profiles = this.favoritesStore.profiles;
-      if (!profiles) return;
-      const currentProfileName = this.favoritesStore.activeProfileName;
-      const profileNames = Object.keys(profiles);
-      if (profileNames.length <= 1) {
-        this.ui.showAlert('전환할 다른 프로필이 없습니다.');
+      const folders = this.favoritesStore.folders;
+      if (!folders) return;
+      if (folders.length <= 1) {
+        this.ui.showAlert('전환할 다른 폴더가 없습니다.');
         return;
       }
-      const currentIndex = profileNames.indexOf(currentProfileName);
+      const currentIndex = folders.findIndex(
+        (folder) => folder.id === this.favoritesStore!.activeFolderId
+      );
       let nextIndex;
       if (direction === 'next') {
-        nextIndex = (currentIndex + 1) % profileNames.length;
+        nextIndex = (currentIndex + 1) % folders.length;
       } else {
-        nextIndex = (currentIndex - 1 + profileNames.length) % profileNames.length;
+        nextIndex = (currentIndex - 1 + folders.length) % folders.length;
       }
-      const nextProfileName = profileNames[nextIndex];
-      await this.favoritesStore.switchProfile(nextProfileName);
-      this.ui.showAlert(`프로필: ${nextProfileName}`);
+      const nextFolder = folders[nextIndex];
+      await this.favoritesStore.switchFolder(nextFolder.id);
+      this.ui.showAlert(`폴더: ${nextFolder.name}`);
     } catch (error) {
-      this.ui.showAlert('프로필 전환 중 오류가 발생했습니다.');
+      this.ui.showAlert('폴더 전환 중 오류가 발생했습니다.');
     }
   },
 
@@ -1490,15 +1496,13 @@ const Events: EventsModuleType = {
 
     const pressedCombo = getShortcutComboFromEvent(event);
     if (pressedCombo) {
-      let targetAction: string | null = null;
+      let targetAction: ShortcutAction | null = null;
 
-      for (const action of this.settingsStore.customizableShortcutActions) {
+      for (const action of SHORTCUT_ACTIONS) {
         const assignedCombo = normalizeShortcutWithFallback(
-          this.settingsStore.shortcutKeys[`shortcut${action}Key`],
-          this.settingsStore.defaultShortcutKeys[
-            action as keyof typeof this.settingsStore.defaultShortcutKeys
-          ],
-          ALT_REQUIRED_ACTIONS.has(action)
+          this.settingsStore.shortcutKeys[getShortcutKeyStorageKey(action)],
+          DEFAULT_SHORTCUT_KEYS[action],
+          isAltRequiredShortcut(action)
         );
         if (assignedCombo === pressedCombo) {
           targetAction = action;
@@ -1508,13 +1512,7 @@ const Events: EventsModuleType = {
 
       if (targetAction) {
         const isEnabled =
-          targetAction === 'SubmitComment'
-            ? this.settingsStore.shortcutSubmitCommentKeyEnabled
-            : targetAction === 'SubmitImagePost'
-              ? this.settingsStore.shortcutSubmitImagePostKeyEnabled
-              : targetAction === 'ToggleModal'
-                ? this.settingsStore.shortcutToggleModalKeyEnabled
-                : this.settingsStore.shortcutEnabled[`shortcut${targetAction}Enabled`];
+          this.settingsStore.shortcutEnabled[getShortcutEnabledStorageKey(targetAction)];
 
         if (isEnabled) {
           // 입력 중에는 단일 키 단축키를 막아 타이핑과 충돌하지 않도록 합니다.
@@ -1536,6 +1534,22 @@ const Events: EventsModuleType = {
       }
     }
 
+    const canUseFavoriteShortcut =
+      !isTypingContext || event.altKey || event.ctrlKey || event.shiftKey || event.metaKey;
+    if (pressedCombo && this.settingsStore.altNumberEnabled && canUseFavoriteShortcut) {
+      // 키 이벤트의 기본 동작이 실행되기 전에 동기적으로 대상을 찾고 차단합니다.
+      // 비동기 조회 후 preventDefault()를 호출하면 Ctrl+F 같은 브라우저 동작이 먼저 실행될 수 있습니다.
+      const favorite = this.favoritesStore.activeFavorites.find(
+        (item) => item.shortcut === pressedCombo
+      );
+      if (favorite?.shortcut && !/^[0-9]$/.test(favorite.shortcut)) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.ui.navigateToGallery(favorite);
+        return;
+      }
+    }
+
     // 레거시 호환: Alt 미리보기 중에는 Prev/NextProfile의 "기본 키"도 동작시킵니다.
     if (
       event.altKey &&
@@ -1547,11 +1561,11 @@ const Events: EventsModuleType = {
     ) {
       const prevProfileCombo = normalizeShortcutWithFallback(
         this.settingsStore.shortcutKeys.shortcutPrevProfileKey,
-        this.settingsStore.defaultShortcutKeys.PrevProfile
+        DEFAULT_SHORTCUT_KEYS.PrevProfile
       );
       const nextProfileCombo = normalizeShortcutWithFallback(
         this.settingsStore.shortcutKeys.shortcutNextProfileKey,
-        this.settingsStore.defaultShortcutKeys.NextProfile
+        DEFAULT_SHORTCUT_KEYS.NextProfile
       );
       const rawKeyUpper = event.key.toUpperCase();
 

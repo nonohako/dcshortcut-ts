@@ -189,7 +189,7 @@
   }
   
   .shortcut-toggle-prefix {
-    font-size: 0.85rem;
+    font-size: 13.5px;
     font-weight: 500;
     color: var(--dc-color-text-muted);
     min-width: 50px;
@@ -198,7 +198,7 @@
   }
   
   .shortcut-toggle-label {
-    font-size: 0.9rem;
+    font-size: 14.5px;
     font-weight: 500;
     color: var(--dc-color-text-primary);
     flex-grow: 1;
@@ -213,7 +213,7 @@
     background-color: var(--dc-color-surface);
     color: var(--dc-color-text-primary);
     border-radius: 6px;
-    font-size: 0.85rem;
+    font-size: 13.5px;
     outline: none;
     text-align: center;
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
@@ -287,7 +287,7 @@
     border: 1px solid var(--dc-color-border-strong);
     border-radius: 6px;
     padding: 5px 10px;
-    font-size: 0.8rem;
+    font-size: 13px;
     color: var(--dc-color-key-text);
     text-decoration: none;
     font-weight: 500;

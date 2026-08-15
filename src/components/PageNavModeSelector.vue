@@ -91,7 +91,7 @@
   <style scoped>
   /* 스타일은 변경되지 않았으므로 여기에 그대로 유지됩니다. */
   .page-nav-title {
-    font-size: 0.95rem;
+    font-size: 15px;
     font-weight: 600;
     color: var(--dc-color-text-secondary);
     margin-bottom: 12px;
@@ -108,7 +108,7 @@
     display: inline-flex;
     align-items: center;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 14.5px;
     color: var(--dc-color-text-primary);
     padding: 6px 0;
     transition: color 0.15s ease;

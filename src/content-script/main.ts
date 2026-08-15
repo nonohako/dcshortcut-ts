@@ -1,6 +1,5 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import './style.css';
 
 // Vue App and Components
 import App from '@/App.vue';
@@ -36,6 +35,8 @@ console.log('👋 DCInside ShortCut 콘텐츠 스크립트 (TS) 로드됨!');
 type MessageAction =
   | 'openFavoritesModal'
   | 'openShortcutManagerModal'
+  | 'showGlobalFavoritesModal'
+  | 'showGlobalShortcutManagerModal'
   | 'startMacro'
   | 'stopMacro'
   | 'leaderUpdate'
@@ -60,7 +61,16 @@ interface LeaderUpdateMessage extends BaseMessage {
   action: 'leaderUpdate';
   leaderTabId: number | null;
 }
-type RuntimeMessage = BaseMessage | StartMacroMessage | StopMacroMessage | LeaderUpdateMessage;
+interface ShowGlobalUiMessage extends BaseMessage {
+  action: 'showGlobalFavoritesModal' | 'showGlobalShortcutManagerModal';
+  mode?: 'open' | 'toggle';
+}
+type RuntimeMessage =
+  | BaseMessage
+  | StartMacroMessage
+  | StopMacroMessage
+  | LeaderUpdateMessage
+  | ShowGlobalUiMessage;
 
 function isPageNavigationMode(value: unknown): value is PageNavigationMode {
   return value === 'ajax' || value === 'full' || value === 'infinite';
@@ -84,6 +94,8 @@ const systemThemeMediaQuery =
     ? window.matchMedia('(prefers-color-scheme: dark)')
     : null;
 let systemThemeListener: ((event: MediaQueryListEvent) => void) | null = null;
+const isDcInsidePage =
+  window.location.hostname === 'dcinside.com' || window.location.hostname.endsWith('.dcinside.com');
 
 function resolveAppliedTheme(mode: ThemeMode): AppliedTheme {
   if (mode === 'system') {
@@ -125,8 +137,11 @@ function applyThemeMode(mode: ThemeMode): void {
   if (mountEl) {
     mountEl.setAttribute('data-dc-theme', appliedTheme);
   }
-  // 디시콘 별칭 팝업 등 body 직속 요소도 동일 테마를 참조할 수 있도록 html에도 반영
-  document.documentElement.setAttribute('data-dc-theme', appliedTheme);
+  // 디시콘 별칭 팝업 등 DC 페이지의 body 직속 요소도 동일 테마를 참조합니다.
+  // 일반 사이트에서는 호스트 문서의 html 속성을 변경하지 않습니다.
+  if (isDcInsidePage) {
+    document.documentElement.setAttribute('data-dc-theme', appliedTheme);
+  }
   setSystemThemeListenerEnabled(mode === 'system');
 }
 
@@ -140,7 +155,9 @@ app.use(pinia);
 const favoritesStore = useFavoritesStore();
 const settingsStore = useSettingsStore();
 const uiStore = useUiStore();
-Events.setup(Storage, Posts, UI, Gallery, favoritesStore, settingsStore, uiStore);
+if (isDcInsidePage) {
+  Events.setup(Storage, Posts, UI, Gallery, favoritesStore, settingsStore, uiStore);
+}
 
 // =================================================================
 // [추가] Storage Listener for Real-time Sync (실시간 동기화를 위한 스토리지 리스너)
@@ -156,6 +173,18 @@ function setupStorageListener(): void {
 
     console.log('[Storage Listener] 설정 변경 감지:', changes);
 
+    // 구버전 백업은 활성 폴더를 ID가 아닌 이름으로 저장합니다.
+    // 목록을 먼저 변환해야 이어지는 활성 폴더 이름을 새 폴더에 연결할 수 있습니다.
+    if (Object.prototype.hasOwnProperty.call(changes, FAVORITE_GALLERIES_KEY)) {
+      console.log('[Sync] 즐겨찾기 목록 변경됨. 상태를 동기화합니다.');
+      favoritesStore.syncFavoritesFromStorage(changes[FAVORITE_GALLERIES_KEY].newValue);
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, ACTIVE_FAVORITES_PROFILE_KEY)) {
+      const activeFolder = changes[ACTIVE_FAVORITES_PROFILE_KEY].newValue;
+      console.log(`[Sync] 활성 폴더 변경됨: ${activeFolder}`);
+      favoritesStore.syncActiveFolderFromStorage(activeFolder);
+    }
+
     // 변경된 각 키에 대해 처리
     for (const key in changes) {
       if (Object.prototype.hasOwnProperty.call(changes, key)) {
@@ -163,15 +192,10 @@ function setupStorageListener(): void {
 
         // 1. 즐겨찾기 데이터 동기화
         if (key === FAVORITE_GALLERIES_KEY) {
-          console.log('[Sync] 즐겨찾기 목록 변경됨. 다시 로드합니다.');
-          // 복잡한 객체는 전체를 다시 로드하는 것이 가장 안전합니다.
-          favoritesStore.loadProfiles();
-          continue; // 다음 변경 사항으로 넘어감
+          continue;
         }
         if (key === ACTIVE_FAVORITES_PROFILE_KEY) {
-            console.log(`[Sync] 활성 프로필 변경됨: ${newValue}`);
-            favoritesStore.activeProfileName = newValue;
-            continue;
+          continue;
         }
 
         // 2. 설정(settingsStore) 동기화
@@ -181,7 +205,7 @@ function setupStorageListener(): void {
           case 'dcinside_page_navigation_mode':
             if (isPageNavigationMode(newValue)) {
               settingsStore.pageNavigationMode = newValue;
-              Events.setPageNavigationMode(newValue);
+              if (isDcInsidePage) Events.setPageNavigationMode(newValue);
             }
             break;
           case 'altNumberEnabled':
@@ -192,16 +216,16 @@ function setupStorageListener(): void {
             break;
           case 'showDateInListEnabled':
             settingsStore.showDateInListEnabled = newValue;
-            Posts.formatDates(newValue);
+            if (isDcInsidePage) Posts.formatDates(newValue);
             break;
           case 'numberLabelsEnabled':
             settingsStore.numberLabelsEnabled = newValue;
-            Posts.addNumberLabels(newValue);
+            if (isDcInsidePage) Posts.addNumberLabels(newValue);
             break;
-          case 'macroZEnabled':
+          case 'shortcutMacroZEnabled':
             settingsStore.macroZEnabled = newValue;
             break;
-          case 'macroXEnabled':
+          case 'shortcutMacroXEnabled':
             settingsStore.macroXEnabled = newValue;
             break;
           case 'shortcutDRefreshCommentEnabled':
@@ -242,15 +266,6 @@ function setupStorageListener(): void {
                 Number.isFinite(parsed) && parsed >= -1 ? parsed : 2.5;
             }
             break;
-          case 'shortcutSubmitCommentKeyEnabled':
-            settingsStore.shortcutSubmitCommentKeyEnabled = newValue;
-            break;
-          case 'shortcutSubmitImagePostKeyEnabled':
-            settingsStore.shortcutSubmitImagePostKeyEnabled = newValue;
-            break;
-          case 'shortcutToggleModalKeyEnabled':
-            settingsStore.shortcutToggleModalKeyEnabled = newValue;
-            break;
           case 'pauseOnInactiveEnabled':
             settingsStore.pauseOnInactiveEnabled = newValue === true;
             break;
@@ -263,7 +278,11 @@ function setupStorageListener(): void {
             if (key.startsWith('shortcut') && key.endsWith('Key')) {
               settingsStore.shortcutKeys[key] = newValue;
             } else if (key.startsWith('shortcut') && key.endsWith('Enabled')) {
-              settingsStore.shortcutEnabled[key] = newValue;
+              if (typeof newValue === 'boolean') {
+                settingsStore.shortcutEnabled[key] = newValue;
+              } else {
+                delete settingsStore.shortcutEnabled[key];
+              }
             }
             break;
         }
@@ -273,10 +292,13 @@ function setupStorageListener(): void {
             key
           )
         ) {
-          handleAutoRefresherState();
+          if (isDcInsidePage) handleAutoRefresherState();
         }
 
-        if (['autoRefreshHighlightColor', 'autoRefreshHighlightDuration'].includes(key)) {
+        if (
+          isDcInsidePage &&
+          ['autoRefreshHighlightColor', 'autoRefreshHighlightDuration'].includes(key)
+        ) {
           AutoRefresher.applyPendingHighlights();
         }
       }
@@ -299,6 +321,20 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       uiStore.openShortcutManagerModal();
       sendResponse({ success: true });
       break;
+
+    case 'showGlobalFavoritesModal': {
+      const { mode } = message as ShowGlobalUiMessage;
+      mode === 'toggle' ? uiStore.toggleFavorites() : uiStore.openFavoritesModal();
+      sendResponse({ success: true, uiReady: true });
+      break;
+    }
+
+    case 'showGlobalShortcutManagerModal': {
+      const { mode } = message as ShowGlobalUiMessage;
+      mode === 'toggle' ? uiStore.toggleShortcuts() : uiStore.openShortcutManagerModal();
+      sendResponse({ success: true, uiReady: true });
+      break;
+    }
 
     case 'startMacro':
       (async () => {
@@ -363,6 +399,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
  * "모든 탭 갱신" 모드가 꺼져 있을 때는 리더 탭에서만 동작합니다.
  */
 function handleAutoRefresherState(): void {
+  if (!isDcInsidePage) return;
   const refreshAllTabs = settingsStore.autoRefreshAllTabsEnabled;
   const amITheLeader = myTabId !== null && myTabId === knownLeaderId;
   const isEnabledInSettings = settingsStore.autoRefreshEnabled;
@@ -419,6 +456,16 @@ function setupObservers(): void {
 
 async function initialize(): Promise<void> {
   try {
+    await Promise.all([settingsStore.loadSettings(), favoritesStore.loadProfiles()]);
+    console.log('[Main] 설정 및 즐겨찾기 로드 완료.');
+    applyThemeMode(settingsStore.themeMode);
+    setupStorageListener();
+
+    if (!isDcInsidePage) {
+      console.log('✅ DCInside ShortCut 전역 UI 준비 완료!');
+      return;
+    }
+
     const response = await chrome.runtime.sendMessage({ action: 'getMyTabId' });
     if (response?.success) {
       myTabId = response.tabId;
@@ -433,12 +480,6 @@ async function initialize(): Promise<void> {
       knownLeaderId = leaderResponse.leaderTabId;
       console.log(`[Init] 현재 리더는 탭 ${knownLeaderId} 입니다.`);
     }
-
-    await Promise.all([settingsStore.loadSettings(), favoritesStore.loadProfiles()]);
-    console.log('[Main] 설정 및 즐겨찾기 로드 완료.');
-    applyThemeMode(settingsStore.themeMode);
-
-    setupStorageListener();
 
     AutoRefresher.init(settingsStore, Posts, Events);
 
@@ -492,8 +533,17 @@ if (document.readyState === 'loading') {
   initialize();
 }
 
-const mountPoint = document.createElement('div');
-mountPoint.id = 'dc-ShortCut-app';
-document.body.appendChild(mountPoint);
-applyThemeMode(settingsStore.themeMode);
-app.mount('#dc-ShortCut-app');
+const mountApplication = (): void => {
+  if (document.getElementById('dc-ShortCut-app') || !document.body) return;
+  const mountPoint = document.createElement('div');
+  mountPoint.id = 'dc-ShortCut-app';
+  document.body.appendChild(mountPoint);
+  applyThemeMode(settingsStore.themeMode);
+  app.mount(mountPoint);
+};
+
+if (document.body) {
+  mountApplication();
+} else {
+  document.addEventListener('DOMContentLoaded', mountApplication, { once: true });
+}

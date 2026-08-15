@@ -1,5 +1,6 @@
 import UI, { type GalleryInfo } from './UI';
 import { useFavoritesStore } from '@/stores/favoritesStore';
+import type { FavoriteShortcut } from '@/types';
 
 // =================================================================
 // Type Definitions (타입 정의)
@@ -136,12 +137,9 @@ const Gallery = {
    */
   async handleFavoriteKey(key: string, favoritesStore: FavoritesStore): Promise<void> {
     try {
-      // 1. 스토어에 해당 키가 등록되어 있는지 확인합니다.
-      const keyExists = await favoritesStore.hasFavorite(key);
+      const galleryData = await favoritesStore.getFavoriteByShortcut(key);
 
-      if (keyExists) {
-        // 2. 키가 존재하면, 해당 갤러리 정보를 가져와 페이지를 이동합니다.
-        const galleryData = await favoritesStore.getFavorite(key);
+      if (galleryData) {
         if (galleryData && 'galleryId' in galleryData && 'galleryType' in galleryData) {
           // navigateToGallery는 galleryId와 galleryType을 필요로 합니다.
           UI.navigateToGallery(galleryData as GalleryInfo);
@@ -160,7 +158,9 @@ const Gallery = {
             galleryId: info.galleryId,
             name: info.galleryName,
           };
-          await favoritesStore.addOrUpdateFavorite(key, favoriteData);
+          await favoritesStore.addFavorite(favoriteData, {
+            shortcut: key as FavoriteShortcut,
+          });
           UI.showAlert(`'${info.galleryName || info.galleryId}'이(가) ${key}번에 등록되었습니다.`);
         } else {
           UI.showAlert('즐겨찾기 등록은 갤러리 페이지에서만 가능합니다.');

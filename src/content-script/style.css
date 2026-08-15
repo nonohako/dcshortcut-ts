@@ -97,6 +97,28 @@ table.gall_list.empty tbody td {
   gap: 3px;
   max-height: 242px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dc-color-scrollbar-thumb, #b8c1cb) transparent;
+}
+
+.dc-shortcut-dccon-popup-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dc-shortcut-dccon-popup-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dc-shortcut-dccon-popup-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--dc-color-scrollbar-thumb, #b8c1cb);
+  background-clip: padding-box;
+}
+
+.dc-shortcut-dccon-popup-list::-webkit-scrollbar-thumb:hover {
+  background: var(--dc-color-scrollbar-thumb-hover, #8e9aa7);
+  background-clip: padding-box;
 }
 
 .dc-shortcut-dccon-popup-cell {

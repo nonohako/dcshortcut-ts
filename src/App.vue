@@ -72,14 +72,17 @@
     --dc-color-preview-border: rgba(255, 255, 255, 0.2);
     --dc-color-preview-key: #ffc107;
     --dc-color-preview-text: #e0e0e0;
+    --dc-color-scrollbar-thumb: #b8c1cb;
+    --dc-color-scrollbar-thumb-hover: #8e9aa7;
     --dc-shadow-soft: 0 2px 4px rgba(0, 0, 0, 0.05);
     --dc-shadow-medium: 0 6px 20px rgba(0, 0, 0, 0.1);
     --dc-shadow-strong: 0 8px 24px rgba(0, 0, 0, 0.15);
     --dc-shadow-tooltip: 0 2px 5px rgba(0, 0, 0, 0.2);
-    --dc-focus-ring: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    --dc-focus-ring: 0 0 0 3.2px rgba(13, 110, 253, 0.25);
   }
 
-  :root[data-dc-theme='dark'] {
+  :root[data-dc-theme='dark'],
+  #dc-ShortCut-app[data-dc-theme='dark'] {
     --dc-color-bg: #15181c;
     --dc-color-surface: #1d2228;
     --dc-color-surface-muted: #242a31;
@@ -116,11 +119,13 @@
     --dc-color-preview-border: rgba(255, 255, 255, 0.14);
     --dc-color-preview-key: #ffd666;
     --dc-color-preview-text: #dbe2ea;
+    --dc-color-scrollbar-thumb: #4d5966;
+    --dc-color-scrollbar-thumb-hover: #718091;
     --dc-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.28);
     --dc-shadow-medium: 0 10px 24px rgba(0, 0, 0, 0.35);
     --dc-shadow-strong: 0 14px 34px rgba(0, 0, 0, 0.4);
     --dc-shadow-tooltip: 0 6px 14px rgba(0, 0, 0, 0.35);
-    --dc-focus-ring: 0 0 0 0.2rem rgba(110, 168, 254, 0.35);
+    --dc-focus-ring: 0 0 0 3.2px rgba(110, 168, 254, 0.35);
   }
 
   /* 
@@ -131,6 +136,56 @@
   /* Vue 애플리케이션의 루트 컨테이너 스타일 */
   #dc-ShortCut-root * {
     font-family: "Noto Sans CJK KR", "NanumGothic", sans-serif !important; /* Fallback to system sans-serif if specified fonts not available */
+  }
+
+  #dc-ShortCut-app,
+  #dc-ShortCut-root {
+    font-size: 16px;
+    line-height: 1.4;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  #dc-ShortCut-root,
+  #dc-ShortCut-root * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dc-color-scrollbar-thumb) transparent;
+  }
+
+  #dc-ShortCut-root::-webkit-scrollbar,
+  #dc-ShortCut-root *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  #dc-ShortCut-root::-webkit-scrollbar-track,
+  #dc-ShortCut-root *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  #dc-ShortCut-root::-webkit-scrollbar-thumb,
+  #dc-ShortCut-root *::-webkit-scrollbar-thumb {
+    min-height: 28px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--dc-color-scrollbar-thumb);
+    background-clip: padding-box;
+  }
+
+  #dc-ShortCut-root::-webkit-scrollbar-thumb:hover,
+  #dc-ShortCut-root *::-webkit-scrollbar-thumb:hover {
+    background: var(--dc-color-scrollbar-thumb-hover);
+    background-clip: padding-box;
+  }
+
+  #dc-ShortCut-root::-webkit-scrollbar-corner,
+  #dc-ShortCut-root *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  #dc-ShortCut-root::-webkit-scrollbar-button,
+  #dc-ShortCut-root *::-webkit-scrollbar-button {
+    display: none;
   }
 
   #dc-ShortCut-root {
@@ -148,7 +203,7 @@
     color: var(--dc-color-tooltip-text);
     padding: 8px 12px;
     border-radius: 6px;
-    font-size: 0.8rem; /* 작은 글씨 크기 */
+    font-size: 13px; /* 작은 글씨 크기 */
     line-height: 1.4;
     white-space: nowrap; /* 기본적으로 한 줄로 표시 */
     z-index: 1000000; /* 다른 모든 UI 요소 위에 표시되도록 매우 높은 z-index 설정 */

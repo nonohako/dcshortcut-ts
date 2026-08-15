@@ -222,7 +222,7 @@
     color: var(--dc-color-tooltip-text);
     padding: 8px 12px; /* Internal padding */
     border-radius: 6px; /* Rounded corners */
-    font-size: 0.8rem; /* 12.8px */
+    font-size: 13px;
     line-height: 1.4; /* Readability */
     white-space: nowrap; /* Default one line */
     z-index: 1000000; /* Ensure it's on top of almost everything */

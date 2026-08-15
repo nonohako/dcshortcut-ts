@@ -131,7 +131,7 @@
   
   /* 슬롯에 내용이 제공되지 않았을 때 표시되는 기본 트리거의 스타일입니다. */
   .default-footnote-trigger {
-    font-size: 0.7rem; /* 11.2px */
+    font-size: 11.2px;
     color: var(--dc-color-danger-strong);
     font-weight: bold;
     vertical-align: super; /* 텍스트를 위첨자처럼 보이게 합니다. */

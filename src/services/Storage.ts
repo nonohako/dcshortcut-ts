@@ -1,4 +1,4 @@
-import type { DcconAliasMap, FavoriteProfiles, PageNavigationMode, ThemeMode } from '@/types';
+import type { DcconAliasMap, FavoritesData, PageNavigationMode, ThemeMode } from '@/types';
 import {
   DCCON_ALIAS_MAP_KEY,
   DCCON_ALIAS_ENABLED_KEY,
@@ -81,6 +81,36 @@ const Storage = {
         // chrome.runtime.lastError는 콜백 함수 내에서만 유효합니다.
         if (chrome.runtime.lastError) {
           console.error('Storage.setData Error:', chrome.runtime.lastError);
+          return reject(chrome.runtime.lastError);
+        }
+        resolve();
+      });
+    });
+  },
+
+  /**
+   * 여러 값을 한 번의 chrome.storage.local 작업으로 저장합니다.
+   */
+  async setDataBatch(values: Record<string, unknown>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set(values, () => {
+        if (chrome.runtime.lastError) {
+          console.error('Storage.setDataBatch Error:', chrome.runtime.lastError);
+          return reject(chrome.runtime.lastError);
+        }
+        resolve();
+      });
+    });
+  },
+
+  /**
+   * 더 이상 사용하지 않는 chrome.storage.local 키를 제거합니다.
+   */
+  async removeData(keys: string | string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.remove(keys, () => {
+        if (chrome.runtime.lastError) {
+          console.error('Storage.removeData Error:', chrome.runtime.lastError);
           return reject(chrome.runtime.lastError);
         }
         resolve();
@@ -302,15 +332,11 @@ const Storage = {
   },
 
   // --- 즐겨찾기 갤러리 목록 ---
-  // [수정] 반환 타입을 FavoriteProfiles로 변경하여 프로필 구조 전체를 다루도록 함
-  async getFavorites(): Promise<FavoriteProfiles> {
-    const defaultValue: FavoriteProfiles = {};
-    const data = await this.getData(FAVORITE_GALLERIES_KEY, defaultValue);
-    return data && typeof data === 'object' ? data : defaultValue;
+  async getFavorites(): Promise<unknown> {
+    return await this.getData<unknown>(FAVORITE_GALLERIES_KEY, {});
   },
 
-  // [수정] 받는 인자 타입을 FavoriteProfiles로 변경
-  async saveFavorites(favorites: FavoriteProfiles): Promise<void> {
+  async saveFavorites(favorites: FavoritesData): Promise<void> {
     await this.setData(FAVORITE_GALLERIES_KEY, favorites);
   },
 

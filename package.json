@@ -1,13 +1,13 @@
 {
   "name": "dcshortcut-ts",
   "private": true,
-  "version": "0.3.9",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "version:sync": "node scripts/sync-version.mjs",
-    "build": "npm run version:sync && vue-tsc --noEmit && vite build",
-    "build:dev": "npm run version:sync && vue-tsc --noEmit && vite build --mode development",
+    "build": "node scripts/sync-version.mjs && vue-tsc --noEmit && vite build",
+    "build:dev": "node scripts/sync-version.mjs && vue-tsc --noEmit && vite build --mode development",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit"
   },

@@ -1,317 +1,610 @@
+import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
 import Storage from '@/services/Storage';
-// [수정] FAVORITE_GALLERIES_KEY를 import 합니다.
+import { normalizeShortcutCombo } from '@/services/Shortcut';
 import { ACTIVE_FAVORITES_PROFILE_KEY, FAVORITE_GALLERIES_KEY } from '@/services/Global';
-import type { FavoriteGalleries, FavoriteGalleryInfo, FavoriteProfiles } from '@/types';
+import type {
+  FavoriteFolder,
+  FavoriteGalleryInfo,
+  FavoriteItem,
+  FavoriteShortcut,
+  FavoritesData,
+  LegacyFavoriteGalleries,
+  LegacyFavoriteProfiles,
+} from '@/types';
 
-export type { FavoriteGalleries, FavoriteGalleryInfo, FavoriteProfiles };
+export type {
+  FavoriteFolder,
+  FavoriteGalleryInfo,
+  FavoriteItem,
+  FavoriteShortcut,
+  FavoritesData,
+  LegacyFavoriteGalleries,
+  LegacyFavoriteProfiles,
+};
+
+const FAVORITES_DATA_VERSION = 2;
+const DEFAULT_FOLDER_NAME = '기본';
+const NUMBER_SHORTCUT_PATTERN = /^[0-9]$/;
+const ALT_NUMBER_SHORTCUT_PATTERN = /^Alt\+([0-9])$/;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const createId = (prefix: 'folder' | 'favorite'): string => {
+  const uuid = typeof crypto?.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${uuid}`;
+};
+
+const normalizeFavoriteShortcut = (value: unknown): FavoriteShortcut | null => {
+  if (typeof value !== 'string') return null;
+  if (NUMBER_SHORTCUT_PATTERN.test(value)) return value;
+
+  const normalized = normalizeShortcutCombo(value);
+  if (!normalized) return null;
+  const altNumberMatch = normalized.match(ALT_NUMBER_SHORTCUT_PATTERN);
+  return altNumberMatch ? altNumberMatch[1] : normalized;
+};
+
+const isFavoriteShortcut = (value: unknown): value is FavoriteShortcut =>
+  normalizeFavoriteShortcut(value) !== null;
+
+const parseGalleryInfo = (value: unknown): FavoriteGalleryInfo | null => {
+  if (!isRecord(value)) return null;
+  if (typeof value.galleryId !== 'string' || !value.galleryId.trim()) return null;
+  if (!['board', 'mgallery', 'mini'].includes(String(value.galleryType))) return null;
+
+  return {
+    name: typeof value.name === 'string' ? value.name : '',
+    galleryId: value.galleryId,
+    galleryType: value.galleryType as FavoriteGalleryInfo['galleryType'],
+  };
+};
+
+const createFavoriteItem = (
+  gallery: FavoriteGalleryInfo,
+  shortcut: FavoriteShortcut | null = null,
+  id = createId('favorite')
+): FavoriteItem => ({ id, ...gallery, shortcut });
+
+const createDefaultFolder = (): FavoriteFolder => ({
+  id: createId('folder'),
+  name: DEFAULT_FOLDER_NAME,
+  favorites: [],
+});
+
+const parseFavoritesData = (value: unknown): FavoritesData | null => {
+  if (!isRecord(value) || value.version !== FAVORITES_DATA_VERSION || !Array.isArray(value.folders)) {
+    return null;
+  }
+
+  const usedFolderIds = new Set<string>();
+  const usedItemIds = new Set<string>();
+  const usedFolderNames = new Set<string>();
+  const folders: FavoriteFolder[] = [];
+
+  for (const rawFolder of value.folders) {
+    if (!isRecord(rawFolder) || !Array.isArray(rawFolder.favorites)) continue;
+
+    const baseName = typeof rawFolder.name === 'string' && rawFolder.name.trim()
+      ? rawFolder.name.trim()
+      : '새 폴더';
+    let name = baseName;
+    let suffix = 2;
+    while (usedFolderNames.has(name)) name = `${baseName} ${suffix++}`;
+    usedFolderNames.add(name);
+
+    const rawFolderId = typeof rawFolder.id === 'string' ? rawFolder.id : '';
+    const folderId = rawFolderId && !usedFolderIds.has(rawFolderId)
+      ? rawFolderId
+      : createId('folder');
+    usedFolderIds.add(folderId);
+
+    const favorites: FavoriteItem[] = [];
+    const usedShortcuts = new Set<FavoriteShortcut>();
+    for (const rawItem of rawFolder.favorites) {
+      const gallery = parseGalleryInfo(rawItem);
+      if (!gallery || !isRecord(rawItem)) continue;
+
+      const rawItemId = typeof rawItem.id === 'string' ? rawItem.id : '';
+      const itemId = rawItemId && !usedItemIds.has(rawItemId)
+        ? rawItemId
+        : createId('favorite');
+      usedItemIds.add(itemId);
+
+      const requestedShortcut = normalizeFavoriteShortcut(rawItem.shortcut);
+      const shortcut = requestedShortcut && !usedShortcuts.has(requestedShortcut)
+        ? requestedShortcut
+        : null;
+      if (shortcut) usedShortcuts.add(shortcut);
+      favorites.push(createFavoriteItem(gallery, shortcut, itemId));
+    }
+
+    folders.push({ id: folderId, name, favorites });
+  }
+
+  return {
+    version: FAVORITES_DATA_VERSION,
+    folders: folders.length > 0 ? folders : [createDefaultFolder()],
+  };
+};
+
+const parseLegacyGalleryMap = (value: unknown): LegacyFavoriteGalleries | null => {
+  if (!isRecord(value)) return null;
+  const parsed: LegacyFavoriteGalleries = {};
+
+  for (const [shortcut, rawGallery] of Object.entries(value)) {
+    if (!NUMBER_SHORTCUT_PATTERN.test(shortcut)) return null;
+    const gallery = parseGalleryInfo(rawGallery);
+    if (!gallery) return null;
+    parsed[shortcut] = gallery;
+  }
+  return parsed;
+};
+
+const migrateLegacyProfiles = (value: unknown): FavoritesData | null => {
+  const singleFolder = parseLegacyGalleryMap(value);
+  if (singleFolder && Object.keys(singleFolder).length > 0) {
+    return {
+      version: FAVORITES_DATA_VERSION,
+      folders: [legacyFolderToFolder(DEFAULT_FOLDER_NAME, singleFolder)],
+    };
+  }
+  if (!isRecord(value)) return null;
+
+  const folders: FavoriteFolder[] = [];
+  for (const [name, rawFavorites] of Object.entries(value)) {
+    const favorites = parseLegacyGalleryMap(rawFavorites);
+    if (!favorites) return null;
+    folders.push(legacyFolderToFolder(name, favorites));
+  }
+
+  return folders.length > 0 ? { version: FAVORITES_DATA_VERSION, folders } : null;
+};
+
+function legacyFolderToFolder(name: string, favorites: LegacyFavoriteGalleries): FavoriteFolder {
+  return {
+    id: createId('folder'),
+    name: name.trim() || DEFAULT_FOLDER_NAME,
+    favorites: Object.entries(favorites)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([shortcut, gallery]) =>
+        createFavoriteItem(gallery, NUMBER_SHORTCUT_PATTERN.test(shortcut) ? shortcut : null)
+      ),
+  };
+}
+
+export const normalizeFavoritesData = (value: unknown): FavoritesData | null =>
+  parseFavoritesData(value) ?? migrateLegacyProfiles(value);
+
+export const resolveActiveFavoriteFolderId = (
+  data: FavoritesData,
+  storedActiveFolder: unknown
+): string => {
+  const candidate = typeof storedActiveFolder === 'string' ? storedActiveFolder : '';
+  return data.folders.find(
+    (folder) => folder.id === candidate || folder.name === candidate
+  )?.id ?? data.folders[0].id;
+};
 
 export const useFavoritesStore = defineStore('favorites', () => {
-  // --- STATE (상태) ---
+  const folders = ref<FavoriteFolder[] | null>(null);
+  const activeFolderId = ref<string>('');
 
-  /**
-   * @description 모든 즐겨찾기 프로필 데이터를 담는 객체.
-   * 초기값은 null이며, loadProfiles()를 통해 로드된 후 FavoriteProfiles 타입의 객체를 가집니다.
-   */
-  const profiles = ref<FavoriteProfiles | null>(null);
+  const activeFolder = computed<FavoriteFolder | null>(() =>
+    folders.value?.find((folder) => folder.id === activeFolderId.value) ?? null
+  );
+  const activeFolderName = computed<string>(() => activeFolder.value?.name ?? DEFAULT_FOLDER_NAME);
+  const activeFavorites = computed<FavoriteItem[]>(() => activeFolder.value?.favorites ?? []);
 
-  /**
-   * @description 현재 활성화된 프로필의 이름.
-   */
-  const activeProfileName = ref<string>('기본');
+  let loadPromise: Promise<void> | null = null;
+  let favoriteWriteQueue: Promise<void> = Promise.resolve();
+  let lastPersistedSnapshot: FavoritesData | null = null;
+  const pendingLocalFavoriteWrites = new Set<string>();
 
-  // --- COMPUTED (계산된 속성) ---
+  function createSnapshot(source = folders.value): FavoritesData {
+    const parsed = parseFavoritesData({
+      version: FAVORITES_DATA_VERSION,
+      folders: source ?? [],
+    });
+    return parsed ?? {
+      version: FAVORITES_DATA_VERSION,
+      folders: [createDefaultFolder()],
+    };
+  }
 
-  /**
-   * @description 현재 활성화된 프로필에 해당하는 즐겨찾기 목록만 반환합니다.
-   * 활성 프로필이 존재하지 않을 경우, 빈 객체를 반환하여 오류를 방지합니다.
-   */
-  const activeFavorites = computed<FavoriteGalleries>(() => {
-    if (profiles.value && profiles.value[activeProfileName.value]) {
-      return profiles.value[activeProfileName.value];
-    }
-    return {}; // 안전하게 빈 객체 반환
-  });
+  function getSnapshotKey(data: FavoritesData): string {
+    return JSON.stringify(data);
+  }
 
-  // --- HELPERS (헬퍼 함수) ---
-
-  /**
-   * @description profiles 상태가 로드되었는지 확인하고, 로드되지 않았다면 로드를 시도합니다.
-   * 다른 액션 함수들이 데이터에 접근하기 전에 호출하여 데이터 무결성을 보장합니다.
-   * @throws {Error} 프로필 데이터 로딩에 실패하면 에러를 발생시킵니다.
-   */
-  async function ensureProfilesLoaded(): Promise<void> {
-    if (profiles.value === null) {
-      console.log('[Pinia Fav Ensure] 상태가 null이므로 로드를 시도합니다...');
-      await loadProfiles();
-      // 로드 후에도 null이면 로딩 실패로 간주
-      if (profiles.value === null) {
-        console.error('[Pinia Fav Ensure] 프로필 로딩에 실패했습니다.');
-        throw new Error('즐겨찾기 데이터를 불러오지 못했습니다.');
-      }
-      console.log('[Pinia Fav Ensure] 프로필이 성공적으로 로드되었습니다.');
+  function markPendingLocalWrite(snapshotKey: string): void {
+    pendingLocalFavoriteWrites.add(snapshotKey);
+    // onChanged는 실제 값이 달라질 때만 발생합니다. 동일 값 저장으로 남은 표식은
+    // 무한히 늘지 않도록 오래된 항목부터 제한합니다.
+    if (pendingLocalFavoriteWrites.size > 50) {
+      const oldestKey = pendingLocalFavoriteWrites.values().next().value as string | undefined;
+      if (oldestKey) pendingLocalFavoriteWrites.delete(oldestKey);
     }
   }
 
-  // --- ACTIONS (액션) ---
+  function consumePendingLocalWrite(snapshotKey: string): boolean {
+    return pendingLocalFavoriteWrites.delete(snapshotKey);
+  }
 
-  /**
-   * Storage에서 즐겨찾기 데이터를 불러와 profiles 상태를 설정합니다.
-   * 구 버전의 데이터 형식을 감지하면 새로운 프로필 구조로 마이그레이션합니다.
-   */
   async function loadProfiles(): Promise<void> {
-    console.log('[Pinia Fav Load] 프로필 로드를 시도합니다...');
-    try {
-      // [핵심 수정] 올바른 스토리지 키(FAVORITE_GALLERIES_KEY)를 사용하여 전체 프로필 데이터를 가져옵니다.
-      const loadedData = (await Storage.getData(FAVORITE_GALLERIES_KEY, {})) as unknown;
-      // 활성 프로필 이름은 별도의 키로 가져옵니다.
-      const loadedActiveProfile = await Storage.getData(ACTIVE_FAVORITES_PROFILE_KEY, '기본');
+    // 최초 로드 이후에는 storage.onChanged가 외부 변경을 동기화합니다.
+    // 매 단축키 입력/모달 열기마다 다시 읽으면 진행 중인 로컬 변경을 오래된 값으로 덮을 수 있습니다.
+    if (folders.value !== null) return;
+    if (loadPromise) return loadPromise;
 
-      if (!loadedData || typeof loadedData !== 'object' || Object.keys(loadedData).length === 0) {
-        profiles.value = { 기본: {} };
-      } else {
-        const keys = Object.keys(loadedData);
-        const isOldFormat = keys.length > 0 && keys.every((key) => /^[0-9]$/.test(key));
+    loadPromise = (async () => {
+      try {
+        const loadedData = await Storage.getData<unknown>(FAVORITE_GALLERIES_KEY, {});
+        const storedActiveFolder = await Storage.getData<string>(
+          ACTIVE_FAVORITES_PROFILE_KEY,
+          DEFAULT_FOLDER_NAME
+        );
 
-        if (isOldFormat) {
-          console.warn(
-            '[Pinia Fav Load] 구 버전 즐겨찾기 데이터를 발견했습니다. 새 프로필 형식으로 마이그레이션합니다...'
-          );
-          profiles.value = { 기본: loadedData as FavoriteGalleries };
-          await saveProfiles();
-          console.log('[Pinia Fav Load] 마이그레이션 완료 및 저장 성공.');
-        } else {
-          profiles.value = loadedData as FavoriteProfiles;
+        const parsed = parseFavoritesData(loadedData);
+        const migrated: FavoritesData = normalizeFavoritesData(loadedData) ?? {
+          version: FAVORITES_DATA_VERSION,
+          folders: [createDefaultFolder()],
+        };
+        folders.value = migrated.folders;
+        lastPersistedSnapshot = createSnapshot(migrated.folders);
+
+        const matchingFolderId = resolveActiveFavoriteFolderId(migrated, storedActiveFolder);
+        activeFolderId.value = matchingFolderId;
+
+        if (!parsed || storedActiveFolder !== matchingFolderId) {
+          await Promise.all([
+            Storage.saveFavorites(migrated),
+            Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, matchingFolderId),
+          ]);
         }
+      } catch (error) {
+        console.error('[Pinia Favorites] 즐겨찾기 로드 실패:', error);
+        const fallback = createDefaultFolder();
+        folders.value = [fallback];
+        activeFolderId.value = fallback.id;
       }
+    })();
 
-      if (profiles.value && profiles.value.hasOwnProperty(loadedActiveProfile)) {
-        activeProfileName.value = loadedActiveProfile;
-      } else {
-        activeProfileName.value = '기본';
-        await Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, '기본');
-      }
-
-      console.log(`[Pinia Fav Load] 프로필 로딩 성공. 활성 프로필: ${activeProfileName.value}`);
-    } catch (error) {
-      console.error('[Pinia Fav Load] 프로필 로딩 중 오류 발생:', error);
-      profiles.value = { 기본: {} };
+    try {
+      await loadPromise;
+    } finally {
+      loadPromise = null;
     }
+  }
+
+  async function ensureLoaded(): Promise<void> {
+    if (folders.value === null) await loadProfiles();
+    if (folders.value === null) throw new Error('즐겨찾기 데이터를 불러오지 못했습니다.');
+  }
+
+  async function reloadProfiles(): Promise<void> {
+    if (loadPromise) await loadPromise;
+    folders.value = null;
+    await loadProfiles();
   }
 
   async function saveProfiles(): Promise<void> {
-    if (profiles.value === null) {
-      throw new Error('null 상태의 프로필은 저장할 수 없습니다.');
-    }
-    await Storage.saveFavorites(profiles.value);
-  }
+    await ensureLoaded();
+    // Vue 반응형 객체를 직접 넘기지 않고 이 시점의 일반 객체 스냅샷을 저장합니다.
+    // 저장 중 다음 작업이 상태를 바꾸더라도 앞선 쓰기의 내용이 함께 변하지 않습니다.
+    const snapshot = createSnapshot();
+    const snapshotKey = getSnapshotKey(snapshot);
+    markPendingLocalWrite(snapshotKey);
 
-  /**
-   * 현재 활성화된 프로필에 즐겨찾기를 추가하거나 업데이트합니다.
-   * @param {string} key - 갤러리 ID
-   * @param {FavoriteGalleryInfo} galleryData - 저장할 갤러리 정보 (예: { name: '갤러리 이름' })
-   */
-  async function addOrUpdateFavorite(key: string, galleryData: FavoriteGalleryInfo): Promise<void> {
+    const writePromise = favoriteWriteQueue.then(() => Storage.saveFavorites(snapshot));
+    // 한 번의 실패가 뒤의 모든 저장까지 막지 않도록 큐 자체는 복구된 Promise로 유지합니다.
+    favoriteWriteQueue = writePromise.catch(() => undefined);
+
     try {
-      await ensureProfilesLoaded();
-      // ensureProfilesLoaded 이후 profiles.value는 null이 아님을 단언(!)
-      const currentProfile = profiles.value![activeProfileName.value] || {};
-      const updatedProfile = { ...currentProfile, [key]: galleryData };
-      profiles.value = { ...profiles.value!, [activeProfileName.value]: updatedProfile };
-      await saveProfiles();
+      await writePromise;
+      lastPersistedSnapshot = snapshot;
     } catch (error) {
-      console.error('[Pinia Fav Add/Update] 실패:', error);
+      consumePendingLocalWrite(snapshotKey);
+      // 실패한 쓰기 이후 더 최신 변경이 없다면 마지막 저장 성공 상태로 되돌립니다.
+      if (
+        lastPersistedSnapshot &&
+        folders.value !== null &&
+        getSnapshotKey(createSnapshot()) === snapshotKey
+      ) {
+        const restored = createSnapshot(lastPersistedSnapshot.folders);
+        folders.value = restored.folders;
+        if (!folders.value.some((folder) => folder.id === activeFolderId.value)) {
+          activeFolderId.value = folders.value[0].id;
+        }
+      }
       throw error;
     }
+
   }
 
-  /**
-   * 현재 활성화된 프로필에서 특정 즐겨찾기를 삭제합니다.
-   * @param {string} key - 삭제할 갤러리 ID
-   */
-  async function removeFavorite(key: string): Promise<void> {
-    try {
-      await ensureProfilesLoaded();
-      const currentProfile = profiles.value![activeProfileName.value];
-      if (!currentProfile || !currentProfile[key]) return;
+  function getFolder(folderId: string): FavoriteFolder {
+    const folder = folders.value?.find((item) => item.id === folderId);
+    if (!folder) throw new Error('존재하지 않는 폴더입니다.');
+    return folder;
+  }
 
-      const newProfile = { ...currentProfile };
-      delete newProfile[key];
-      profiles.value = { ...profiles.value!, [activeProfileName.value]: newProfile };
-      await saveProfiles();
-    } catch (error) {
-      console.error('[Pinia Fav Remove] 실패:', error);
-      throw error;
+  async function switchFolder(folderId: string): Promise<void> {
+    await ensureLoaded();
+    const folder = getFolder(folderId);
+    activeFolderId.value = folder.id;
+    await Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, folder.id);
+  }
+
+  function syncActiveFolderFromStorage(folderId: unknown): void {
+    if (typeof folderId !== 'string' || !folders.value) return;
+    const folder = folders.value.find((item) => item.id === folderId || item.name === folderId);
+    if (folder) activeFolderId.value = folder.id;
+  }
+
+  function syncFavoritesFromStorage(value: unknown): void {
+    // 전체 초기화/복원 과정의 clear 이벤트는 후속 set 또는 명시적 loadProfiles가 처리합니다.
+    if (value === undefined) return;
+    const parsed = parseFavoritesData(value);
+    const normalized = parsed ?? migrateLegacyProfiles(value);
+    if (!normalized) {
+      console.warn('[Pinia Favorites] 지원하지 않는 즐겨찾기 변경값을 무시했습니다.');
+      return;
+    }
+
+    const incomingSnapshotKey = getSnapshotKey(normalized);
+    // 자신의 저장 이벤트를 다시 적용하면, 그 사이 만들어진 더 최신 로컬 변경이 사라질 수 있습니다.
+    if (consumePendingLocalWrite(incomingSnapshotKey)) return;
+
+    if (folders.value !== null && getSnapshotKey(createSnapshot()) === incomingSnapshotKey) return;
+
+    lastPersistedSnapshot = normalized;
+    folders.value = normalized.folders;
+    if (!folders.value.some((folder) => folder.id === activeFolderId.value)) {
+      activeFolderId.value = folders.value[0].id;
+    }
+
+    if (!parsed) {
+      void saveProfiles().catch((error) => {
+        console.error('[Pinia Favorites] 구버전 즐겨찾기 자동 변환 저장 실패:', error);
+      });
     }
   }
 
-  /**
-   * 현재 활성화된 프로필에 특정 즐겨찾기가 있는지 확인합니다.
-   * @param {string} key - 확인할 갤러리 ID
-   * @returns {Promise<boolean>} 존재 여부
-   */
-  async function hasFavorite(key: string): Promise<boolean> {
-    try {
-      await ensureProfilesLoaded();
-      const currentProfile = profiles.value![activeProfileName.value];
-      return currentProfile ? currentProfile.hasOwnProperty(key) : false;
-    } catch (error) {
-      console.error(`[Pinia Fav Has] 키 '${key}' 확인 중 오류:`, error);
-      return false;
+  async function addFolder(name: string): Promise<string> {
+    await ensureLoaded();
+    const normalizedName = name.trim();
+    if (!normalizedName) throw new Error('폴더 이름은 비워둘 수 없습니다.');
+    if (folders.value!.some((folder) => folder.name === normalizedName)) {
+      throw new Error('이미 존재하는 폴더 이름입니다.');
     }
+
+    const folder: FavoriteFolder = { id: createId('folder'), name: normalizedName, favorites: [] };
+    folders.value!.push(folder);
+    await saveProfiles();
+    await switchFolder(folder.id);
+    return folder.id;
   }
 
-  /**
-   * 현재 활성화된 프로필에서 특정 즐겨찾기 정보를 가져옵니다.
-   * @param {string} key - 가져올 갤러리 ID
-   * @returns {Promise<FavoriteGalleryInfo | null>} 갤러리 정보 또는 null
-   */
-  async function getFavorite(key: string): Promise<FavoriteGalleryInfo | null> {
-    try {
-      await ensureProfilesLoaded();
-      const currentProfile = profiles.value![activeProfileName.value];
-      return currentProfile ? currentProfile[key] || null : null;
-    } catch (error) {
-      console.error(`[Pinia Fav Get] 키 '${key}' 가져오는 중 오류:`, error);
-      return null;
+  async function renameFolder(folderId: string, name: string): Promise<void> {
+    await ensureLoaded();
+    const normalizedName = name.trim();
+    if (!normalizedName) throw new Error('폴더 이름은 비워둘 수 없습니다.');
+    if (folders.value!.some((folder) => folder.id !== folderId && folder.name === normalizedName)) {
+      throw new Error('이미 존재하는 폴더 이름입니다.');
     }
+    getFolder(folderId).name = normalizedName;
+    await saveProfiles();
   }
 
-  /**
-   * 제공된 데이터로 모든 프로필을 덮어씁니다. (데이터 가져오기 기능용)
-   * @param {FavoriteProfiles} newProfilesData - 새로 설정할 전체 프로필 데이터
-   */
-  async function clearAndSetFavorites(newProfilesData: FavoriteProfiles): Promise<void> {
-    console.log(
-      '[Pinia Fav ClearSet] 새 프로필 데이터로 전체 덮어쓰기:',
-      JSON.stringify(newProfilesData)
+  async function removeFolder(folderId: string): Promise<void> {
+    await ensureLoaded();
+    if (folders.value!.length <= 1) throw new Error('최소 한 개의 폴더는 남겨두어야 합니다.');
+    const index = folders.value!.findIndex((folder) => folder.id === folderId);
+    if (index < 0) return;
+    folders.value!.splice(index, 1);
+
+    if (activeFolderId.value === folderId) {
+      const nextFolder = folders.value![Math.min(index, folders.value!.length - 1)];
+      activeFolderId.value = nextFolder.id;
+      await Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, nextFolder.id);
+    }
+    await saveProfiles();
+  }
+
+  async function reorderFolder(sourceFolderId: string, targetFolderId: string): Promise<void> {
+    await ensureLoaded();
+    if (sourceFolderId === targetFolderId) return;
+    const sourceIndex = folders.value!.findIndex((folder) => folder.id === sourceFolderId);
+    const targetIndex = folders.value!.findIndex((folder) => folder.id === targetFolderId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const [folder] = folders.value!.splice(sourceIndex, 1);
+    folders.value!.splice(targetIndex, 0, folder);
+    await saveProfiles();
+  }
+
+  async function assignShortcut(
+    itemId: string,
+    shortcut: FavoriteShortcut | null,
+    folderId = activeFolderId.value
+  ): Promise<void> {
+    await ensureLoaded();
+    const folder = getFolder(folderId);
+    const item = folder.favorites.find((favorite) => favorite.id === itemId);
+    if (!item) throw new Error('존재하지 않는 즐겨찾기입니다.');
+    const normalizedShortcut = shortcut === null ? null : normalizeFavoriteShortcut(shortcut);
+    if (shortcut !== null && !normalizedShortcut) throw new Error('유효한 단축키 조합이 아닙니다.');
+    if (item.shortcut === normalizedShortcut) return;
+
+    const previousShortcut = item.shortcut;
+    const conflicting = normalizedShortcut
+      ? folder.favorites.find(
+          (favorite) => favorite.id !== itemId && favorite.shortcut === normalizedShortcut
+        )
+      : null;
+    if (conflicting) conflicting.shortcut = previousShortcut;
+    item.shortcut = normalizedShortcut;
+    await saveProfiles();
+  }
+
+  async function addFavorite(
+    galleryData: FavoriteGalleryInfo,
+    options: { folderId?: string; shortcut?: FavoriteShortcut | null } = {}
+  ): Promise<{ item: FavoriteItem; created: boolean }> {
+    await ensureLoaded();
+    const folder = getFolder(options.folderId ?? activeFolderId.value);
+    const existing = folder.favorites.find(
+      (item) => item.galleryId === galleryData.galleryId && item.galleryType === galleryData.galleryType
     );
-    if (typeof newProfilesData !== 'object' || newProfilesData === null) {
-      throw new Error('프로필 설정에 제공된 데이터가 유효하지 않습니다.');
+
+    if (existing) {
+      existing.name = galleryData.name || existing.name;
+      if (options.shortcut !== undefined && existing.shortcut !== options.shortcut) {
+        const conflicting = options.shortcut
+          ? folder.favorites.find(
+              (item) => item.id !== existing.id && item.shortcut === options.shortcut
+            )
+          : null;
+        if (conflicting) conflicting.shortcut = existing.shortcut;
+        existing.shortcut = options.shortcut;
+      }
+      await saveProfiles();
+      return { item: existing, created: false };
     }
 
-    // 1. 스토어의 내부 상태(ref)를 새로운 데이터로 교체합니다.
-    profiles.value = { ...newProfilesData };
-
-    // 2. 새 데이터의 첫 번째 프로필을 활성 프로필로 설정합니다.
-    const firstProfile = Object.keys(newProfilesData)[0] || '기본';
-    // switchProfile은 활성 프로필 이름만 저장하므로 그대로 둡니다.
-    await switchProfile(firstProfile);
-
-    // 3. [핵심 수정] 변경된 전체 프로필 데이터를 chrome.storage에 영구적으로 저장합니다.
+    const shortcut = options.shortcut ?? null;
+    if (shortcut) {
+      const conflicting = folder.favorites.find((item) => item.shortcut === shortcut);
+      if (conflicting) conflicting.shortcut = null;
+    }
+    const item = createFavoriteItem(galleryData, shortcut);
+    folder.favorites.push(item);
     await saveProfiles();
-    console.log('[Pinia Fav ClearSet] 새 프로필 데이터를 스토리지에 저장 완료.');
+    return { item, created: true };
   }
 
-  // --- NEW PROFILE MANAGEMENT ACTIONS (새 프로필 관리 액션) ---
-
-  /**
-   * 활성 프로필을 전환합니다.
-   * @param {string} profileName - 전환할 프로필 이름
-   */
-  async function switchProfile(profileName: string): Promise<void> {
-    await ensureProfilesLoaded();
-    if (profiles.value!.hasOwnProperty(profileName)) {
-      activeProfileName.value = profileName;
-      await Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, profileName);
-      console.log(`[Pinia Fav] 프로필 전환 완료: ${profileName}`);
-    } else {
-      console.error(`[Pinia Fav] 프로필 "${profileName}"을(를) 찾을 수 없습니다.`);
-    }
-  }
-
-  /**
-   * 새로운 프로필을 추가합니다.
-   * @param {string} profileName - 추가할 프로필 이름
-   */
-  async function addProfile(profileName: string): Promise<void> {
-    await ensureProfilesLoaded();
-    const trimmedName = typeof profileName === 'string' ? profileName.trim() : '';
-    if (!trimmedName) {
-      throw new Error('프로필 이름은 비워둘 수 없습니다.');
-    }
-    if (profiles.value!.hasOwnProperty(trimmedName)) {
-      throw new Error('이미 존재하는 프로필 이름입니다.');
-    }
-    profiles.value = { ...profiles.value!, [trimmedName]: {} };
-    await saveProfiles();
-    await switchProfile(trimmedName); // 추가 후 바로 전환
-  }
-
-  /**
-   * 기존 프로필을 삭제합니다.
-   * @param {string} profileName - 삭제할 프로필 이름
-   */
-  async function removeProfile(profileName: string): Promise<void> {
-    await ensureProfilesLoaded();
-    if (Object.keys(profiles.value!).length <= 1) {
-      throw new Error('최소 한 개의 프로필은 남겨두어야 합니다.');
-    }
-    if (!profiles.value!.hasOwnProperty(profileName)) return;
-
-    const newProfiles = { ...profiles.value! };
-    delete newProfiles[profileName];
-    profiles.value = newProfiles;
-
-    // 삭제된 프로필이 현재 활성 프로필이었다면, 남은 프로필 중 첫 번째 것으로 전환
-    if (activeProfileName.value === profileName) {
-      const nextProfile = Object.keys(profiles.value)[0];
-      await switchProfile(nextProfile);
-    }
+  async function removeFavorites(
+    itemIds: string[],
+    folderId = activeFolderId.value
+  ): Promise<void> {
+    await ensureLoaded();
+    const folder = getFolder(folderId);
+    const ids = new Set(itemIds);
+    folder.favorites = folder.favorites.filter((item) => !ids.has(item.id));
     await saveProfiles();
   }
 
-  /**
-   * 프로필의 이름을 변경합니다.
-   * @param {string} oldName - 현재 프로필 이름
-   * @param {string} newName - 새로운 프로필 이름
-   */
-  async function renameProfile(oldName: string, newName: string): Promise<void> {
-    await ensureProfilesLoaded();
-    const trimmedNewName = typeof newName === 'string' ? newName.trim() : '';
-    if (!trimmedNewName) {
-      throw new Error('프로필 이름은 비워둘 수 없습니다.');
-    }
-    if (!profiles.value!.hasOwnProperty(oldName)) {
-      throw new Error('존재하지 않는 프로필입니다.');
-    }
-    if (profiles.value!.hasOwnProperty(trimmedNewName)) {
-      throw new Error('이미 존재하는 프로필 이름입니다.');
+  async function moveFavorites(
+    itemIds: string[],
+    sourceFolderId: string,
+    targetFolderId: string,
+    beforeItemId: string | null = null
+  ): Promise<void> {
+    await ensureLoaded();
+    const sourceFolder = getFolder(sourceFolderId);
+    const targetFolder = getFolder(targetFolderId);
+    const ids = new Set(itemIds);
+    const movingItems = sourceFolder.favorites.filter((item) => ids.has(item.id));
+    if (movingItems.length === 0) return;
+
+    if (sourceFolderId !== targetFolderId) {
+      const duplicate = movingItems.find((moving) =>
+        targetFolder.favorites.some(
+          (target) =>
+            target.galleryId === moving.galleryId && target.galleryType === moving.galleryType
+        )
+      );
+      if (duplicate) throw new Error(`'${duplicate.name || duplicate.galleryId}'은(는) 대상 폴더에 이미 있습니다.`);
     }
 
-    const profileData = profiles.value![oldName];
-    const newProfiles = { ...profiles.value! };
-    delete newProfiles[oldName];
-    newProfiles[trimmedNewName] = profileData;
-    profiles.value = newProfiles;
+    sourceFolder.favorites = sourceFolder.favorites.filter((item) => !ids.has(item.id));
+    const destination = sourceFolderId === targetFolderId
+      ? sourceFolder.favorites
+      : targetFolder.favorites;
 
-    // 이름이 변경된 프로필이 활성 프로필이었다면, 활성 프로필 이름도 업데이트
-    if (activeProfileName.value === oldName) {
-      await switchProfile(trimmedNewName);
+    if (sourceFolderId !== targetFolderId) {
+      const occupiedShortcuts = new Set(
+        destination.map((item) => item.shortcut).filter(isFavoriteShortcut)
+      );
+      movingItems.forEach((item) => {
+        if (item.shortcut && occupiedShortcuts.has(item.shortcut)) item.shortcut = null;
+        if (item.shortcut) occupiedShortcuts.add(item.shortcut);
+      });
     }
+
+    const targetIndex = beforeItemId
+      ? destination.findIndex((item) => item.id === beforeItemId)
+      : -1;
+    destination.splice(targetIndex >= 0 ? targetIndex : destination.length, 0, ...movingItems);
     await saveProfiles();
   }
 
-  // --- Return (반환) ---
+  async function setFavoriteOrder(folderId: string, orderedItemIds: string[]): Promise<void> {
+    await ensureLoaded();
+    const folder = getFolder(folderId);
+    const itemById = new Map(folder.favorites.map((item) => [item.id, item]));
+    const seen = new Set<string>();
+    const reordered: FavoriteItem[] = [];
+
+    orderedItemIds.forEach((itemId) => {
+      const item = itemById.get(itemId);
+      if (!item || seen.has(itemId)) return;
+      seen.add(itemId);
+      reordered.push(item);
+    });
+    // 드래그 도중 외부 동기화로 새 항목이 들어와도 누락시키지 않습니다.
+    folder.favorites.forEach((item) => {
+      if (!seen.has(item.id)) reordered.push(item);
+    });
+
+    const orderChanged = reordered.some((item, index) => item.id !== folder.favorites[index]?.id);
+    if (!orderChanged) return;
+
+    folder.favorites = reordered;
+    await saveProfiles();
+  }
+
+  async function getFavoriteByShortcut(shortcut: string): Promise<FavoriteItem | null> {
+    await ensureLoaded();
+    const normalizedShortcut = normalizeFavoriteShortcut(shortcut);
+    if (!normalizedShortcut) return null;
+    return activeFavorites.value.find((item) => item.shortcut === normalizedShortcut) ?? null;
+  }
+
+  async function clearAndSetFavorites(value: unknown): Promise<void> {
+    const parsed = normalizeFavoritesData(value);
+    if (!parsed) throw new Error('즐겨찾기 데이터 형식이 올바르지 않습니다.');
+    folders.value = parsed.folders;
+    activeFolderId.value = parsed.folders[0].id;
+    await Promise.all([
+      saveProfiles(),
+      Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, activeFolderId.value),
+    ]);
+  }
+
   return {
-    // State
-    profiles,
-    activeProfileName,
-    // Computed
+    folders,
+    activeFolderId,
+    activeFolder,
+    activeFolderName,
     activeFavorites,
-    // Actions
     loadProfiles,
-    addOrUpdateFavorite,
-    removeFavorite,
-    hasFavorite,
-    getFavorite,
-    clearAndSetFavorites,
-    // Profile Management Actions
-    switchProfile,
-    addProfile,
-    removeProfile,
-    renameProfile,
+    reloadProfiles,
     saveProfiles,
+    switchFolder,
+    syncFavoritesFromStorage,
+    syncActiveFolderFromStorage,
+    addFolder,
+    renameFolder,
+    removeFolder,
+    reorderFolder,
+    addFavorite,
+    removeFavorites,
+    moveFavorites,
+    setFavoriteOrder,
+    assignShortcut,
+    getFavoriteByShortcut,
+    clearAndSetFavorites,
   };
 });

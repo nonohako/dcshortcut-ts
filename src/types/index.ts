@@ -10,16 +10,28 @@ export interface FavoriteGalleryInfo {
 }
 
 /**
- * @type FavoriteGalleries
- * @description 갤러리 ID를 키로 사용하는 즐겨찾기 갤러리 목록 타입.
+ * 숫자는 기존처럼 Alt+숫자로 해석하고, 그 외 값은 정규화된 키 조합으로 저장합니다.
  */
-export type FavoriteGalleries = Record<string, FavoriteGalleryInfo>;
+export type FavoriteShortcut = string;
 
-/**
- * @type FavoriteProfiles
- * @description 프로필 이름을 키로 사용하는 전체 즐겨찾기 프로필 데이터 타입.
- */
-export type FavoriteProfiles = Record<string, FavoriteGalleries>;
+export interface FavoriteItem extends FavoriteGalleryInfo {
+  id: string;
+  shortcut: FavoriteShortcut | null;
+}
+
+export interface FavoriteFolder {
+  id: string;
+  name: string;
+  favorites: FavoriteItem[];
+}
+
+export interface FavoritesData {
+  version: 2;
+  folders: FavoriteFolder[];
+}
+
+export type LegacyFavoriteGalleries = Record<string, FavoriteGalleryInfo>;
+export type LegacyFavoriteProfiles = Record<string, LegacyFavoriteGalleries>;
 
 /**
  * @type PageNavigationMode

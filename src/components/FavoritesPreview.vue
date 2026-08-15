@@ -8,28 +8,28 @@
       class="favorites-preview-container"
       :style="{ opacity: settingsStore.favoritesPreviewOpacity }"
     >
-      <!-- 활성 프로필 이름을 제목으로 표시합니다. -->
-      <h4 class="preview-title">{{ favoritesStore.activeProfileName }}</h4>
+      <h4 class="preview-title">{{ favoritesStore.activeFolderName }}</h4>
       
       <!-- 정렬된 즐겨찾기 목록을 표시합니다. -->
       <ul class="preview-list">
-        <li v-for="(gallery, key) in sortedFavorites" :key="key" class="preview-item">
-          <span class="preview-key">{{ key }}:</span>
+        <li v-for="gallery in shortcutFavorites" :key="gallery.id" class="preview-item">
+          <span class="preview-key">{{ formatShortcut(gallery.shortcut) }}:</span>
           <span class="preview-name">{{ gallery.name || gallery.galleryId }}</span>
         </li>
         <!-- 즐겨찾기가 하나도 없을 경우 메시지를 표시합니다. -->
-        <li v-if="Object.keys(sortedFavorites).length === 0" class="preview-item-empty">
-          즐겨찾기 없음
+        <li v-if="shortcutFavorites.length === 0" class="preview-item-empty">
+          숫자 단축키 없음
         </li>
       </ul>
     </div>
   </template>
   
   <script setup lang="ts">
-  import { computed, type ComputedRef } from 'vue';
+  import { computed } from 'vue';
   import { storeToRefs } from 'pinia';
   import { useUiStore } from '@/stores/uiStore';
-  import { useFavoritesStore, type FavoriteGalleries, type FavoriteGalleryInfo } from '@/stores/favoritesStore';
+  import { useFavoritesStore } from '@/stores/favoritesStore';
+  import type { FavoriteItem } from '@/types';
   import { useSettingsStore } from '@/stores/settingsStore';
   
   // =================================================================
@@ -49,7 +49,7 @@
   // storeToRefs를 사용하여 스토어의 상태를 반응성을 유지하는 ref로 가져옵니다.
   // isFavoritesPreviewVisible: 이 컴포넌트의 표시 여부를 제어합니다.
   const { isFavoritesPreviewVisible: isVisible } = storeToRefs(uiStore);
-  // activeFavorites: 현재 활성화된 프로필의 즐겨찾기 목록입니다.
+  // activeFavorites: 현재 활성화된 폴더의 즐겨찾기 목록입니다.
   const { activeFavorites } = storeToRefs(favoritesStore);
   
   
@@ -57,26 +57,20 @@
   // Computed Properties (계산된 속성)
   // =================================================================
   
-  /**
-   * @description 활성 프로필의 즐겨찾기 목록을 숫자 키(1, 2, 3...) 순서로 정렬하여 반환합니다.
-   * @returns {ComputedRef<FavoriteGalleries>} 정렬된 즐겨찾기 목록 객체.
-   */
-  const sortedFavorites: ComputedRef<FavoriteGalleries> = computed(() => {
-    // activeFavorites.value가 유효한 객체인지 확인합니다.
-    if (activeFavorites.value && typeof activeFavorites.value === 'object') {
-      // 1. Object.entries: 객체를 [key, value] 쌍의 배열로 변환합니다.
-      // 2. sort: 키(keyA)를 숫자로 변환하여 오름차순으로 정렬합니다.
-      // 3. reduce: 정렬된 배열을 다시 객체 형태로 변환합니다.
-      return Object.entries(activeFavorites.value)
-        .sort(([keyA], [keyB]) => parseInt(keyA, 10) - parseInt(keyB, 10))
-        .reduce((obj: FavoriteGalleries, [key, value]: [string, FavoriteGalleryInfo]) => {
-          obj[key] = value;
-          return obj;
-        }, {} as FavoriteGalleries); // 초기값으로 빈 FavoriteGalleries 객체를 제공합니다.
-    }
-    // 유효하지 않은 경우 빈 객체를 반환합니다.
-    return {};
-  });
+  const shortcutFavorites = computed<FavoriteItem[]>(() =>
+    activeFavorites.value
+      .filter((favorite) => favorite.shortcut !== null)
+      .sort((a, b) => {
+        const aIsNumber = /^[0-9]$/.test(a.shortcut ?? '');
+        const bIsNumber = /^[0-9]$/.test(b.shortcut ?? '');
+        if (aIsNumber && bIsNumber) return Number(a.shortcut) - Number(b.shortcut);
+        if (aIsNumber !== bIsNumber) return aIsNumber ? -1 : 1;
+        return (a.shortcut ?? '').localeCompare(b.shortcut ?? '', 'en');
+      })
+  );
+
+  const formatShortcut = (shortcut: string | null): string =>
+    shortcut && /^[0-9]$/.test(shortcut) ? `Alt+${shortcut}` : shortcut ?? '';
   </script>
   
   <style scoped>
@@ -100,7 +94,7 @@
   }
   
   .preview-title {
-    font-size: 1rem;
+    font-size: 16px;
     font-weight: 500;
     color: var(--dc-color-text-primary);
     margin: 0 0 10px 0;
@@ -119,7 +113,7 @@
   
   .preview-item {
     display: flex;
-    font-size: 0.9rem;
+    font-size: 14.5px;
     padding: 4px 0;
     white-space: nowrap;
   }
