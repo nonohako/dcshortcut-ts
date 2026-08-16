@@ -1,6 +1,6 @@
 <template>
     <!-- Vue 애플리케이션의 최상위 루트 요소입니다. -->
-    <div id="dc-ShortCut-root">
+    <div id="dc-ShortCut-root" @wheel.capture="containModalWheel">
       <!-- 
         uiStore의 activeModal 상태에 따라 조건부로 모달을 렌더링합니다.
         - 'favorites'일 경우 즐겨찾기 모달을,
@@ -32,6 +32,58 @@
    * TypeScript가 `useUiStore`의 반환 타입을 추론하여 `uiStore` 상수를 자동으로 타이핑합니다.
    */
   const uiStore = useUiStore();
+
+  const SCROLL_BOUNDARY_EPSILON = 1;
+  const SCROLLABLE_OVERFLOW_PATTERN = /^(auto|scroll|overlay)$/;
+
+  const isScrollableOnAxis = (element: HTMLElement, axis: 'x' | 'y'): boolean => {
+    const styles = window.getComputedStyle(element);
+    const overflow = axis === 'y' ? styles.overflowY : styles.overflowX;
+    const scrollSize = axis === 'y' ? element.scrollHeight : element.scrollWidth;
+    const clientSize = axis === 'y' ? element.clientHeight : element.clientWidth;
+
+    return SCROLLABLE_OVERFLOW_PATTERN.test(overflow) && scrollSize > clientSize + SCROLL_BOUNDARY_EPSILON;
+  };
+
+  const canConsumeWheel = (element: HTMLElement, axis: 'x' | 'y', delta: number): boolean => {
+    if (!isScrollableOnAxis(element, axis)) return false;
+
+    const scrollPosition = axis === 'y' ? element.scrollTop : element.scrollLeft;
+    const scrollSize = axis === 'y' ? element.scrollHeight : element.scrollWidth;
+    const clientSize = axis === 'y' ? element.clientHeight : element.clientWidth;
+
+    if (delta < 0) return scrollPosition > SCROLL_BOUNDARY_EPSILON;
+    if (delta > 0) {
+      return scrollPosition + clientSize < scrollSize - SCROLL_BOUNDARY_EPSILON;
+    }
+    return false;
+  };
+
+  /**
+   * 모달 내부 휠 스크롤이 경계나 항목 사이 여백에서 호스트 페이지로 이어지는 것을 막습니다.
+   * 내부 스크롤 영역이 움직일 수 있을 때는 브라우저의 기본 스크롤을 그대로 사용합니다.
+   */
+  const containModalWheel = (event: WheelEvent): void => {
+    if (!uiStore.activeModal || event.ctrlKey) return;
+
+    const axis: 'x' | 'y' = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? 'y' : 'x';
+    const delta = axis === 'y' ? event.deltaY : event.deltaX;
+    if (delta === 0) return;
+
+    const root = event.currentTarget as HTMLElement;
+    const scrollableAncestors = event.composedPath().filter(
+      (node): node is HTMLElement =>
+        node instanceof HTMLElement &&
+        (node === root || root.contains(node)) &&
+        isScrollableOnAxis(node, axis)
+    );
+
+    event.stopPropagation();
+
+    if (!scrollableAncestors.some((element) => canConsumeWheel(element, axis, delta))) {
+      event.preventDefault();
+    }
+  };
   </script>
   
   <style>
@@ -194,6 +246,7 @@
   #dc-ShortCut-root {
     position: relative; /* 자식 요소(특히 Teleport된 요소)의 위치 기준점으로 작동할 수 있음 */
     z-index: 9999; /* 모달이나 툴팁보다는 낮은 z-index를 가집니다. */
+    overscroll-behavior: contain;
   }
   
   /* 
