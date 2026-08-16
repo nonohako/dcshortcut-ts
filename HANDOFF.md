@@ -90,7 +90,7 @@ PowerShell의 현재 경로는 `\\?\C:\...`가 아니라 일반 `C:\Users\mqpow\
 ## 릴리스 체크리스트
 
 1. `package.json` 버전을 변경합니다.
-2. README 변경 내역과 권한 설명을 갱신합니다.
+2. 현재 기능·설치·권한 설명이 달라졌을 때만 README를 갱신합니다.
 3. `pnpm run build`를 실행합니다.
 4. `dist/manifest.json`의 버전과 권한을 확인합니다.
 5. Chrome 확장 관리 화면에서 `dist`를 다시 로드합니다.
@@ -98,3 +98,4 @@ PowerShell의 현재 경로는 `\\?\C:\...`가 아니라 일반 `C:\Users\mqpow\
 7. 검색, 폴더 이동, 드래그, 다중 선택, 크기 조절, 설정 저장을 확인합니다.
 8. 콘솔 오류와 백그라운드 자동 새로고침을 확인합니다.
 
+버전별 상세 변경 내역은 README에 누적하지 않고 GitHub Release notes에만 작성합니다.

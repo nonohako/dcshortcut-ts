@@ -99,6 +99,6 @@ pnpm run build
 
 - 버전의 기준은 `package.json`입니다.
 - 빌드 전에 `scripts/sync-version.mjs`가 manifest와 관련 표시를 동기화합니다.
-- 버전을 올릴 때 README의 변경 내역과 설치/권한 설명도 함께 갱신합니다.
+- 버전별 상세 변경 내역은 README에 누적하지 않고 GitHub Release notes에 작성합니다.
+- README는 현재 기능, 설치 방법, 권한처럼 항상 유효한 정보가 달라질 때만 갱신합니다.
 - 릴리스 직전에는 프로덕션 빌드, 실제 Chrome 로드, 주요 기능 수동 검증을 완료합니다.
-
