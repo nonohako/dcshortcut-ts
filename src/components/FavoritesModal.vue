@@ -29,6 +29,7 @@
         <label class="search-box folder-search-box">
           <span>⌕</span>
           <input
+            ref="searchInput"
             :value="searchQuery"
             type="search"
             placeholder="모든 폴더 검색"
@@ -299,6 +300,7 @@ const dragOverFolderId = ref<string | null>(null);
 const dragPreviewOrderIds = ref<string[] | null>(null);
 const customShortcutItemId = ref<string | null>(null);
 const customShortcutInput = ref<HTMLInputElement | null>(null);
+const searchInput = ref<HTMLInputElement | null>(null);
 
 interface PendingUndo {
   message: string;
@@ -1164,7 +1166,10 @@ onMounted(async () => {
   await Promise.all([favoritesStore.loadProfiles(), loadLayoutPreferences()]);
   window.addEventListener('resize', handleViewportResize);
   await nextTick();
-  requestAnimationFrame(() => { isVisible.value = true; });
+  requestAnimationFrame(() => {
+    isVisible.value = true;
+    void nextTick(() => searchInput.value?.focus({ preventScroll: true }));
+  });
 });
 
 onUnmounted(() => {

@@ -300,7 +300,7 @@
           <div class="backup-restore-buttons">
             <button class="dc-button dc-button-blue" @click="backupSettings">설정 백업</button>
             <button class="dc-button dc-button-orange" @click="triggerRestoreInput">설정 복원</button>
-            <input type="file" id="restore-settings-input" @change="handleFileRestore" accept=".json"
+            <input ref="restoreFileInput" type="file" id="restore-settings-input" @change="handleFileRestore" accept=".json"
               style="display: none;" />
           </div>
         </div>
@@ -422,6 +422,7 @@ const dcconAliasItems = ref<DcconAliasListItem[]>([]);
 const dcconAliasSearchQuery = ref<string>('');
 const isResetDialogVisible = ref<boolean>(false);
 const resetConfirmInput = ref<string>('');
+const restoreFileInput = ref<HTMLInputElement | null>(null);
 const allSwitchesTarget = ref<'on' | 'off' | null>(null);
 const favoritesCommandShortcut = ref('');
 const isFavoritesCommandLoaded = ref(false);
@@ -1210,7 +1211,14 @@ const removeDcconAlias = async (item: DcconAliasListItem): Promise<void> => {
 };
 
 const triggerRestoreInput = (): void => {
-  document.getElementById('restore-settings-input')?.click();
+  const input = restoreFileInput.value;
+  if (!input) {
+    UI.showAlert('복원 파일 선택창을 열지 못했습니다. 설정창을 다시 열어주세요.');
+    return;
+  }
+
+  input.value = '';
+  input.click();
 };
 
 const backupSettings = async (): Promise<void> => {
