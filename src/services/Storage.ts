@@ -152,6 +152,19 @@ const Storage = {
     }
   },
 
+  // --- 즐겨찾기 새 탭 열기 ---
+  async getFavoritesOpenInNewTab(): Promise<boolean> {
+    return await this.getData('favoritesOpenInNewTab', false);
+  },
+
+  async saveFavoritesOpenInNewTab(enabled: boolean): Promise<void> {
+    try {
+      await this.setData('favoritesOpenInNewTab', enabled);
+    } catch (error) {
+      console.error('Failed to save favoritesOpenInNewTab:', error);
+    }
+  },
+
   async getFavoritesPreviewOpacity(): Promise<number> {
     const defaultValue = 0.85; // 기본 투명도 85%
     return await this.getData('favoritesPreviewOpacity', defaultValue);

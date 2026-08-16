@@ -9,6 +9,8 @@
         <FootnoteTrigger
           v-if="tooltipText"
           :tooltip-text="tooltipText"
+          :trigger-label="tooltipLabel"
+          :trigger-tone="tooltipTone"
           style="margin-left: 6px;"
         />
       </span>
@@ -59,6 +61,8 @@
   currentKey?: string;
   prefix?: string;
   tooltipText?: string;
+  tooltipLabel?: string;
+  tooltipTone?: 'warning' | 'info';
   isKeyEditable?: boolean;
 }
   
@@ -88,6 +92,8 @@
    const props = withDefaults(defineProps<ShortcutToggleProps>(), {
   prefix: '',
   tooltipText: '',
+  tooltipLabel: '주의',
+  tooltipTone: 'warning',
   isKeyEditable: true,
   currentKey: '',
   storageKeyEnabled: '', // 기본값은 빈 문자열

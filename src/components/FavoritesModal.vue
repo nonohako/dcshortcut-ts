@@ -203,7 +203,13 @@
               </option>
               <option :value="CUSTOM_SHORTCUT_VALUE">Custom</option>
             </select>
-            <button class="favorite-main" @click="navigateTo(favorite)">
+            <button
+              class="favorite-main"
+              title="클릭하여 열기 · 휠 클릭으로 새 탭에서 열기"
+              @click="navigateTo(favorite)"
+              @mousedown.middle.prevent
+              @auxclick="handleFavoriteAuxClick(favorite, $event)"
+            >
               <span class="favorite-name">
                 <span class="favorite-title">{{ favorite.name || favorite.galleryId }}</span><span v-if="isSearching" class="favorite-folder-label">({{ favorite.sourceFolderName }})</span>
               </span>
@@ -777,8 +783,15 @@ const handleRemoveFolder = async (): Promise<void> => {
 };
 
 const navigateTo = (gallery: FavoriteGalleryInfo): void => {
-  UI.navigateToGallery(gallery);
+  UI.navigateToGallery(gallery, { newTab: settingsStore.favoritesOpenInNewTab });
   uiStore.closeModal();
+};
+
+const handleFavoriteAuxClick = (gallery: FavoriteGalleryInfo, event: MouseEvent): void => {
+  if (event.button !== 1) return;
+  event.preventDefault();
+  event.stopPropagation();
+  UI.navigateToGallery(gallery, { newTab: true });
 };
 
 const addCurrentFavorite = async (): Promise<void> => {
@@ -1307,7 +1320,8 @@ button { color: inherit; }
 }
 .custom-shortcut-input { cursor: text; font-size: 11.5px; }
 .move-select { width: 74px; padding: 6px 4px; font-size: 11.5px; }
-.favorite-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 2px; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.favorite-main { align-self: stretch; min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; margin: -7px 0; padding: 7px 6px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; text-align: left; }
+.favorite-main:hover { background: var(--dc-color-surface-hover); }
 .favorite-name { max-width: 100%; min-width: 0; display: flex; align-items: baseline; white-space: nowrap; color: var(--dc-color-text-primary); font-size: 14px; }
 .favorite-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .favorite-folder-label { flex: 0 0 auto; color: var(--dc-color-text-muted); font-size: 12px; }

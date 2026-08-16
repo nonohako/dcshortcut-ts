@@ -232,6 +232,9 @@ function setupStorageListener(): void {
           case 'macroInterval':
             settingsStore.macroInterval = Number(newValue);
             break;
+          case 'favoritesOpenInNewTab':
+            settingsStore.favoritesOpenInNewTab = newValue === true;
+            break;
           case 'favoritesPreviewEnabled':
             settingsStore.favoritesPreviewEnabled = newValue;
             break;

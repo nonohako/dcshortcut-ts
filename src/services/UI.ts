@@ -14,6 +14,10 @@ export interface GalleryInfo {
   url?: string;
 }
 
+interface NavigateToGalleryOptions {
+  newTab?: boolean;
+}
+
 /**
  * @type ElementProperties
  * @description createElement 함수에서 요소에 할당할 속성들을 정의하는 타입.
@@ -94,7 +98,7 @@ const UI = {
    * 주어진 갤러리 정보에 따라 해당 갤러리 페이지로 이동합니다.
    * @param {GalleryInfo} gallery - 이동할 갤러리 정보를 담은 객체
    */
-  navigateToGallery(gallery: GalleryInfo): void {
+  navigateToGallery(gallery: GalleryInfo, options: NavigateToGalleryOptions = {}): void {
     if (!gallery || !gallery.galleryId) {
       console.error('페이지 이동을 위한 갤러리 정보가 유효하지 않습니다:', gallery);
       return;
@@ -103,7 +107,11 @@ const UI = {
       try {
         const url = new URL(gallery.url ?? gallery.galleryId);
         if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Unsupported protocol');
-        window.location.assign(url.href);
+        if (options.newTab) {
+          window.open(url.href, '_blank', 'noopener,noreferrer');
+        } else {
+          window.location.assign(url.href);
+        }
       } catch {
         console.error('웹 즐겨찾기 주소가 유효하지 않습니다:', gallery);
       }
@@ -116,8 +124,12 @@ const UI = {
     const galleryPrefix = gallery.galleryType === 'board' ? '' : `/${gallery.galleryType}`;
     const url = `${baseUrl}${galleryPrefix}/${listPath}?id=${gallery.galleryId}`;
 
-    // 생성된 URL로 페이지를 이동시킵니다.
-    window.location.href = url;
+    // 생성된 URL로 페이지를 이동하거나 새 탭에서 엽니다.
+    if (options.newTab) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      window.location.href = url;
+    }
   },
 
   /**

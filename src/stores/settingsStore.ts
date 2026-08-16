@@ -49,6 +49,7 @@ interface SettingsStoreReturn {
   showDateInListEnabled: Ref<boolean>;
   shortcutDRefreshCommentEnabled: Ref<boolean>;
   macroInterval: Ref<number>;
+  favoritesOpenInNewTab: Ref<boolean>;
   favoritesPreviewEnabled: Ref<boolean>;
   favoritesPreviewOpacity: Ref<number>;
   autoRefreshEnabled: Ref<boolean>;
@@ -79,6 +80,7 @@ interface SettingsStoreReturn {
   ) => ShortcutConflict | null;
   saveMacroInterval: (interval: number | string) => Promise<SaveResult>;
   saveShortcutDRefreshCommentEnabled: (enabled: boolean) => Promise<void>;
+  saveFavoritesOpenInNewTab: (enabled: boolean) => Promise<void>;
   saveFavoritesPreviewEnabled: (enabled: boolean) => Promise<void>;
   saveFavoritesPreviewOpacity: (opacity: number | string) => Promise<SaveResult>;
   saveAutoRefreshEnabled: (enabled: boolean) => Promise<void>;
@@ -105,6 +107,7 @@ const ALL_SWITCH_STORAGE_KEYS = [
   'numberLabelsEnabled',
   'numberNavigationEnabled',
   'showDateInListEnabled',
+  'favoritesOpenInNewTab',
   'favoritesPreviewEnabled',
   'autoRefreshEnabled',
   'autoRefreshAllTabsEnabled',
@@ -128,6 +131,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   const showDateInListEnabled = ref<boolean>(true);
   const shortcutDRefreshCommentEnabled = ref<boolean>(true);
   const macroInterval = ref<number>(5000);
+  const favoritesOpenInNewTab = ref<boolean>(false);
   const favoritesPreviewEnabled = ref<boolean>(true);
   const favoritesPreviewOpacity = ref<number>(0.85);
   const autoRefreshEnabled = ref<boolean>(false);
@@ -153,6 +157,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
       Storage.getShortcutDRefreshCommentEnabled().then(
         (val) => (shortcutDRefreshCommentEnabled.value = val)
       ),
+      Storage.getFavoritesOpenInNewTab().then((val) => (favoritesOpenInNewTab.value = val)),
       Storage.getFavoritesPreviewEnabled().then((val) => (favoritesPreviewEnabled.value = val)),
       Storage.getFavoritesPreviewOpacity().then((val) => (favoritesPreviewOpacity.value = val)),
       Storage.getAutoRefreshEnabled().then((val) => (autoRefreshEnabled.value = val)),
@@ -340,6 +345,11 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     favoritesPreviewEnabled.value = enabled;
   }
 
+  async function saveFavoritesOpenInNewTab(enabled: boolean): Promise<void> {
+    await Storage.saveFavoritesOpenInNewTab(enabled);
+    favoritesOpenInNewTab.value = enabled;
+  }
+
   async function saveFavoritesPreviewOpacity(opacity: number | string): Promise<SaveResult> {
     const numericOpacity = Number(opacity);
     if (isNaN(numericOpacity) || numericOpacity < 0.1 || numericOpacity > 1.0) {
@@ -433,6 +443,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     showDateInListEnabled,
     shortcutDRefreshCommentEnabled,
     macroInterval,
+    favoritesOpenInNewTab,
     favoritesPreviewEnabled,
     favoritesPreviewOpacity,
     autoRefreshEnabled,
@@ -454,6 +465,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     findConfiguredShortcutConflict,
     saveMacroInterval,
     saveShortcutDRefreshCommentEnabled,
+    saveFavoritesOpenInNewTab,
     saveFavoritesPreviewEnabled,
     saveFavoritesPreviewOpacity,
     saveAutoRefreshEnabled,

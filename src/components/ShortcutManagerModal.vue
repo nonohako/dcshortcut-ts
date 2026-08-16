@@ -16,7 +16,7 @@
       <!-- 단축키 탭 -->
       <div v-show="activeTab === 'shortcuts'" class="tab-pane">
         <div class="shortcut-section">
-          <div class="shortcut-section-title">즐겨찾기/폴더</div>
+          <div class="shortcut-section-title">전역 즐겨찾기</div>
           <div class="shortcut-interval-setting browser-command-setting">
             <div class="browser-command-description">
               <span class="interval-label">전역 즐겨찾기창 열기</span>
@@ -28,6 +28,10 @@
               {{ isFavoritesCommandLoaded && !favoritesCommandShortcut ? '지금 지정' : '변경' }}
             </button>
           </div>
+        </div>
+
+        <div class="shortcut-section">
+          <div class="shortcut-section-title">폴더</div>
           <ShortcutToggle :label="getShortcutLabel('PrevProfile')"
             :enabled="settingsStore.shortcutEnabled.shortcutPrevProfileEnabled"
             :currentKey="settingsStore.shortcutKeys.shortcutPrevProfileKey"
@@ -86,29 +90,12 @@
       <div v-show="activeTab === 'advanced'" class="tab-pane">
         <div class="shortcut-section">
           <div class="shortcut-section-title">즐겨찾기</div>
-          <div class="shortcut-interval-setting theme-mode-setting">
-            <label for="theme-mode-select" class="interval-label">화면 테마</label>
-            <select
-              id="theme-mode-select"
-              class="theme-mode-select"
-              :value="settingsStore.themeMode"
-              @change="updateThemeMode"
-            >
-              <option value="system">시스템 기본값</option>
-              <option value="dark">다크</option>
-              <option value="light">라이트</option>
-            </select>
-          </div>
           <ShortcutToggle label="즐겨찾기 단축키 - 해당 즐겨찾기로 바로 이동" :enabled="settingsStore.altNumberEnabled"
             storageKeyEnabled="altNumberEnabled" @update:enabled="updateAltNumberEnabled" :isKeyEditable="false" />
-          <ShortcutToggle label="숫자키 - 라벨 글 이동" :enabled="settingsStore.numberNavigationEnabled"
-            storageKeyEnabled="numberNavigationEnabled" @update:enabled="updateNumberNavigationEnabled"
-            :isKeyEditable="false" />
-          <ShortcutToggle label="목록 번호 라벨 표시" :enabled="settingsStore.numberLabelsEnabled"
-            storageKeyEnabled="numberLabelsEnabled" @update:enabled="updateNumberLabelsEnabled"
-            :isKeyEditable="false" />
-          <ShortcutToggle label="작성일에 시간 표시" :enabled="settingsStore.showDateInListEnabled"
-            storageKeyEnabled="showDateInListEnabled" @update:enabled="updateShowDateInListEnabled"
+          <ShortcutToggle label="즐겨찾기 새 탭에서 열기" :enabled="settingsStore.favoritesOpenInNewTab"
+            tooltipLabel="팁" tooltipTone="info"
+            tooltipText="설정 상태와 관계없이 즐겨찾기를 마우스 휠로 클릭하면 새 탭에서 열립니다."
+            storageKeyEnabled="favoritesOpenInNewTab" @update:enabled="updateFavoritesOpenInNewTab"
             :isKeyEditable="false" />
           <ShortcutToggle label="Alt - 미리보기 표시" :enabled="settingsStore.favoritesPreviewEnabled"
             storageKeyEnabled="favoritesPreviewEnabled" @update:enabled="updateFavoritesPreviewEnabled"
@@ -153,6 +140,32 @@
               </button>
             </div>
           </div>
+        </div>
+
+        <div class="shortcut-section">
+          <div class="shortcut-section-title">화면/목록</div>
+          <div class="shortcut-interval-setting theme-mode-setting">
+            <label for="theme-mode-select" class="interval-label">화면 테마</label>
+            <select
+              id="theme-mode-select"
+              class="theme-mode-select"
+              :value="settingsStore.themeMode"
+              @change="updateThemeMode"
+            >
+              <option value="system">시스템 기본값</option>
+              <option value="dark">다크</option>
+              <option value="light">라이트</option>
+            </select>
+          </div>
+          <ShortcutToggle label="숫자키 - 라벨 글 이동" :enabled="settingsStore.numberNavigationEnabled"
+            storageKeyEnabled="numberNavigationEnabled" @update:enabled="updateNumberNavigationEnabled"
+            :isKeyEditable="false" />
+          <ShortcutToggle label="목록 번호 라벨 표시" :enabled="settingsStore.numberLabelsEnabled"
+            storageKeyEnabled="numberLabelsEnabled" @update:enabled="updateNumberLabelsEnabled"
+            :isKeyEditable="false" />
+          <ShortcutToggle label="작성일에 시간 표시" :enabled="settingsStore.showDateInListEnabled"
+            storageKeyEnabled="showDateInListEnabled" @update:enabled="updateShowDateInListEnabled"
+            :isKeyEditable="false" />
         </div>
       </div>
 
@@ -463,6 +476,7 @@ const allSwitchStates = computed<boolean[]>(() => [
   settingsStore.numberNavigationEnabled,
   settingsStore.showDateInListEnabled,
   settingsStore.shortcutDRefreshCommentEnabled,
+  settingsStore.favoritesOpenInNewTab,
   settingsStore.favoritesPreviewEnabled,
   settingsStore.autoRefreshEnabled,
   settingsStore.autoRefreshAllTabsEnabled,
@@ -1059,6 +1073,12 @@ const updateFavoritesPreviewEnabled = async (storageKey: string | undefined, ena
   if (!storageKey) return;
   await settingsStore.saveFavoritesPreviewEnabled(enabled);
   UI.showAlert(`즐겨찾기 미리보기 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
+};
+
+const updateFavoritesOpenInNewTab = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
+  if (!storageKey) return;
+  await settingsStore.saveFavoritesOpenInNewTab(enabled);
+  UI.showAlert(`즐겨찾기 새 탭 열기가 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
 const updatePreviewOpacityDebounced = (event: Event): void => {

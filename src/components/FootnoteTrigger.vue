@@ -19,7 +19,10 @@
         기본값으로는 '[주의]' 텍스트가 표시됩니다.
       -->
       <slot name="trigger">
-        <span class="default-footnote-trigger">[주의]</span>
+        <span
+          class="default-footnote-trigger"
+          :class="`default-footnote-trigger--${triggerTone}`"
+        >[{{ triggerLabel }}]</span>
       </slot>
   
       <!--
@@ -60,6 +63,8 @@
    */
   interface FootnoteTriggerProps {
     tooltipText: string; // 툴팁에 표시될 필수 텍스트
+    triggerLabel?: string; // 트리거에 표시할 짧은 라벨
+    triggerTone?: 'warning' | 'info'; // 트리거 라벨의 강조 색상
     tooltipPosition?: TooltipPosition; // 툴팁 위치
     tooltipOffset?: number; // 트리거 요소로부터의 거리 (px)
     multilineThreshold?: number; // 텍스트가 여러 줄로 표시될 임계 길이
@@ -75,6 +80,8 @@
    * @description `defineProps`와 `withDefaults`를 사용하여 props를 정의하고 기본값을 설정합니다.
    */
   const props = withDefaults(defineProps<FootnoteTriggerProps>(), {
+    triggerLabel: '주의',
+    triggerTone: 'warning',
     tooltipPosition: 'top',
     tooltipOffset: 8,
     multilineThreshold: 35,
@@ -132,10 +139,17 @@
   /* 슬롯에 내용이 제공되지 않았을 때 표시되는 기본 트리거의 스타일입니다. */
   .default-footnote-trigger {
     font-size: 11.2px;
-    color: var(--dc-color-danger-strong);
     font-weight: bold;
     vertical-align: super; /* 텍스트를 위첨자처럼 보이게 합니다. */
     user-select: none; /* 텍스트 선택을 방지합니다. */
     padding: 0 2px;
+  }
+
+  .default-footnote-trigger--warning {
+    color: var(--dc-color-danger-strong);
+  }
+
+  .default-footnote-trigger--info {
+    color: var(--dc-color-accent);
   }
   </style>
