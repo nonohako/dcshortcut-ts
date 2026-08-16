@@ -9,6 +9,7 @@ import type {
   FavoriteItem,
   FavoriteShortcut,
   FavoritesData,
+  FavoritesStateSnapshot,
   LegacyFavoriteGalleries,
   LegacyFavoriteProfiles,
 } from '@/types';
@@ -19,6 +20,7 @@ export type {
   FavoriteItem,
   FavoriteShortcut,
   FavoritesData,
+  FavoritesStateSnapshot,
   LegacyFavoriteGalleries,
   LegacyFavoriteProfiles,
 };
@@ -51,10 +53,33 @@ const normalizeFavoriteShortcut = (value: unknown): FavoriteShortcut | null => {
 const isFavoriteShortcut = (value: unknown): value is FavoriteShortcut =>
   normalizeFavoriteShortcut(value) !== null;
 
+const normalizeWebUrl = (value: unknown): string | null => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    parsed.hash = '';
+    return parsed.href;
+  } catch {
+    return null;
+  }
+};
+
 const parseGalleryInfo = (value: unknown): FavoriteGalleryInfo | null => {
   if (!isRecord(value)) return null;
   if (typeof value.galleryId !== 'string' || !value.galleryId.trim()) return null;
-  if (!['board', 'mgallery', 'mini'].includes(String(value.galleryType))) return null;
+  if (!['board', 'mgallery', 'mini', 'web'].includes(String(value.galleryType))) return null;
+
+  if (value.galleryType === 'web') {
+    const url = normalizeWebUrl(value.url ?? value.galleryId);
+    if (!url) return null;
+    return {
+      name: typeof value.name === 'string' ? value.name : '',
+      galleryId: url,
+      galleryType: 'web',
+      url,
+    };
+  }
 
   return {
     name: typeof value.name === 'string' ? value.name : '',
@@ -213,6 +238,26 @@ export const useFavoritesStore = defineStore('favorites', () => {
       version: FAVORITES_DATA_VERSION,
       folders: [createDefaultFolder()],
     };
+  }
+
+  function getStateSnapshot(): FavoritesStateSnapshot {
+    return {
+      data: createSnapshot(),
+      activeFolderId: activeFolderId.value,
+    };
+  }
+
+  async function restoreStateSnapshot(snapshot: FavoritesStateSnapshot): Promise<void> {
+    await ensureLoaded();
+    const restored = parseFavoritesData(snapshot.data);
+    if (!restored) throw new Error('되돌릴 즐겨찾기 상태가 올바르지 않습니다.');
+
+    folders.value = restored.folders;
+    activeFolderId.value = resolveActiveFavoriteFolderId(restored, snapshot.activeFolderId);
+    await Promise.all([
+      saveProfiles(),
+      Storage.setData(ACTIVE_FAVORITES_PROFILE_KEY, activeFolderId.value),
+    ]);
   }
 
   function getSnapshotKey(data: FavoritesData): string {
@@ -453,13 +498,16 @@ export const useFavoritesStore = defineStore('favorites', () => {
     options: { folderId?: string; shortcut?: FavoriteShortcut | null } = {}
   ): Promise<{ item: FavoriteItem; created: boolean }> {
     await ensureLoaded();
+    const normalizedGallery = parseGalleryInfo(galleryData);
+    if (!normalizedGallery) throw new Error('즐겨찾기 주소 또는 갤러리 정보가 올바르지 않습니다.');
     const folder = getFolder(options.folderId ?? activeFolderId.value);
     const existing = folder.favorites.find(
-      (item) => item.galleryId === galleryData.galleryId && item.galleryType === galleryData.galleryType
+      (item) => item.galleryId === normalizedGallery.galleryId && item.galleryType === normalizedGallery.galleryType
     );
 
     if (existing) {
-      existing.name = galleryData.name || existing.name;
+      existing.name = normalizedGallery.name || existing.name;
+      existing.url = normalizedGallery.url;
       if (options.shortcut !== undefined && existing.shortcut !== options.shortcut) {
         const conflicting = options.shortcut
           ? folder.favorites.find(
@@ -478,7 +526,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
       const conflicting = folder.favorites.find((item) => item.shortcut === shortcut);
       if (conflicting) conflicting.shortcut = null;
     }
-    const item = createFavoriteItem(galleryData, shortcut);
+    const item = createFavoriteItem(normalizedGallery, shortcut);
     folder.favorites.push(item);
     await saveProfiles();
     return { item, created: true };
@@ -606,5 +654,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
     assignShortcut,
     getFavoriteByShortcut,
     clearAndSetFavorites,
+    getStateSnapshot,
+    restoreStateSnapshot,
   };
 });

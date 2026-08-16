@@ -20,11 +20,14 @@ type GlobalUiMode = 'open' | 'toggle';
 
 type MessageAction =
   | 'getMacroState'
+  | 'getFavoritesCommand'
   | 'openShortcutsPage'
+  | 'openGlobalUi'
+  | 'toggleMacro'
+  | 'getDcTabContext'
   | 'getMyTabId'
   | 'getLeaderTabId'
   | 'contentScriptLoaded'
-  | 'ensureGlobalUi'
   | 'startMacro'
   | 'stopMacro'
   | 'leaderUpdate';
@@ -33,16 +36,42 @@ interface BaseMessage {
   action: MessageAction;
 }
 
-interface EnsureGlobalUiMessage extends BaseMessage {
-  action: 'ensureGlobalUi';
+interface OpenGlobalUiMessage extends BaseMessage {
+  action: 'openGlobalUi';
   target: GlobalUiTarget;
   mode: GlobalUiMode;
 }
 
+interface ToggleMacroMessage extends BaseMessage {
+  action: 'toggleMacro';
+  type: MacroType;
+}
+
+interface DcTabContextResponse {
+  success?: boolean;
+  isDcInsidePage?: boolean;
+  isRefreshablePage?: boolean;
+}
+
 const globalUiInjectionTasks = new Map<number, Promise<void>>();
+let leaderElectionGeneration = 0;
+let leaderTransitionQueue: Promise<void> = Promise.resolve();
 
 const getGlobalUiAction = (target: GlobalUiTarget): string =>
   target === 'favorites' ? 'showGlobalFavoritesModal' : 'showGlobalShortcutManagerModal';
+
+const isDcInsideUrl = (value: unknown): boolean => {
+  if (typeof value !== 'string') return false;
+  try {
+    const hostname = new URL(value).hostname;
+    return hostname === 'dcinside.com' || hostname.endsWith('.dcinside.com');
+  } catch {
+    return false;
+  }
+};
+
+const waitForContentScript = (delayMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 async function dispatchGlobalUiAction(
   tabId: number,
@@ -84,11 +113,24 @@ async function injectGlobalUi(tabId: number): Promise<void> {
 }
 
 async function ensureGlobalUi(
-  tabId: number,
+  tab: chrome.tabs.Tab,
   target: GlobalUiTarget,
   mode: GlobalUiMode
 ): Promise<void> {
+  const tabId = tab.id;
+  if (typeof tabId !== 'number') throw new Error('활성 탭을 찾을 수 없습니다.');
   if (await dispatchGlobalUiAction(tabId, target, mode)) return;
+
+  if (isDcInsideUrl(tab.url)) {
+    // DC 페이지는 manifest 콘텐츠 스크립트가 담당합니다. 로딩 중 별도 주입하면
+    // document_idle 시점에 중복 실행될 수 있으므로 잠시 기다렸다가 다시 전달합니다.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await waitForContentScript(100);
+      if (await dispatchGlobalUiAction(tabId, target, mode)) return;
+    }
+    throw new Error('DCInside 페이지 로딩이 끝난 뒤 다시 시도해주세요.');
+  }
+
   await injectGlobalUi(tabId);
   if (!(await dispatchGlobalUiAction(tabId, target, mode))) {
     throw new Error('주입된 UI 콘텐츠 스크립트가 응답하지 않습니다.');
@@ -99,15 +141,31 @@ async function ensureGlobalUi(
 // Leader Election and Tab Event Listeners (리더 선출 및 탭 이벤트 리스너)
 // =================================================================
 
-async function removeLeader(): Promise<void> {
-  const { [LEADER_TAB_ID_KEY_SESSION]: currentLeader } =
-    await chrome.storage.session.get(LEADER_TAB_ID_KEY_SESSION);
+async function setLeaderState(nextLeaderId: number | null): Promise<void> {
+  const transition = leaderTransitionQueue.then(async () => {
+    const { [LEADER_TAB_ID_KEY_SESSION]: storedLeaderId } =
+      await chrome.storage.session.get(LEADER_TAB_ID_KEY_SESSION);
+    const currentLeaderId = typeof storedLeaderId === 'number' ? storedLeaderId : null;
+    if (currentLeaderId === nextLeaderId) return;
 
-  if (currentLeader !== null) {
-    console.log(`[LeaderElection] 리더 ${currentLeader}를 해제합니다.`);
-    await chrome.storage.session.set({ [LEADER_TAB_ID_KEY_SESSION]: null });
-    await broadcastLeaderUpdate(null);
-  }
+    if (nextLeaderId === null) {
+      console.log(`[LeaderElection] 리더 ${currentLeaderId}를 해제합니다.`);
+    } else {
+      console.log(`[LeaderElection] 새로운 리더 선출: 탭 ${nextLeaderId}`);
+    }
+    await chrome.storage.session.set({ [LEADER_TAB_ID_KEY_SESSION]: nextLeaderId });
+    await broadcastLeaderUpdate(nextLeaderId);
+  });
+  leaderTransitionQueue = transition.catch((error) => {
+    console.warn('[LeaderElection] 리더 상태 전환 실패:', error);
+  });
+  await transition;
+}
+
+async function removeLeader(): Promise<void> {
+  // 진행 중인 탭 판별 응답이 뒤늦게 도착해 리더를 다시 설정하지 못하게 합니다.
+  leaderElectionGeneration += 1;
+  await setLeaderState(null);
 }
 
 async function isAutoRefreshAllTabsEnabled(): Promise<boolean> {
@@ -115,7 +173,33 @@ async function isAutoRefreshAllTabsEnabled(): Promise<boolean> {
   return settings[AUTO_REFRESH_ALL_TABS_KEY] === true;
 }
 
+async function getDcTabContext(tabId: number): Promise<DcTabContextResponse | null> {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { action: 'getDcTabContext' });
+    if (response?.success !== true) return null;
+    return response as DcTabContextResponse;
+  } catch {
+    // 콘텐츠 스크립트가 없는 일반 페이지이거나 아직 document_idle 이전입니다.
+    return null;
+  }
+}
+
+async function handleIneligibleActiveTab(tabId: number): Promise<void> {
+  const settings = await chrome.storage.local.get(PAUSE_ON_INACTIVE_KEY);
+  if (settings[PAUSE_ON_INACTIVE_KEY]) {
+    console.log(
+      `[LeaderElection] 새로고침할 수 없는 탭(${tabId}) 활성화 + "일시중지" ON -> 리더를 해제합니다.`
+    );
+    await removeLeader();
+  } else {
+    console.log(
+      `[LeaderElection] 새로고침할 수 없는 탭(${tabId}) 활성화 + "일시중지" OFF -> 리더를 유지합니다.`
+    );
+  }
+}
+
 async function electNewLeader(newLeaderId: number): Promise<void> {
+  const electionGeneration = ++leaderElectionGeneration;
   try {
     // "모든 탭 갱신"이 켜진 상태에서는 리더 개념이 불필요하므로 비활성화합니다.
     if (await isAutoRefreshAllTabsEnabled()) {
@@ -123,39 +207,29 @@ async function electNewLeader(newLeaderId: number): Promise<void> {
       return;
     }
 
-    const tab = await chrome.tabs.get(newLeaderId);
+    const context = await getDcTabContext(newLeaderId);
+    if (electionGeneration !== leaderElectionGeneration) return;
 
-    if (!tab.url || !tab.url.includes('/board/')) {
-      // DC 탭이 아닌 탭이 활성화되면, "일시중지" 옵션이 켜져 있을 때만 리더를 해제
-      const settings = await chrome.storage.local.get(PAUSE_ON_INACTIVE_KEY);
-      if (settings[PAUSE_ON_INACTIVE_KEY]) {
-        console.log(
-          `[LeaderElection] 비-DC 탭(${newLeaderId}) 활성화 + "일시중지" 옵션 ON -> 리더를 해제합니다.`
-        );
-        await removeLeader();
-      } else {
-        console.log(
-          `[LeaderElection] 비-DC 탭(${newLeaderId}) 활성화 + "일시중지" 옵션 OFF -> 리더를 유지합니다.`
-        );
-      }
+    if (!context?.isDcInsidePage || !context.isRefreshablePage) {
+      await handleIneligibleActiveTab(newLeaderId);
       return;
     }
 
-    const { [LEADER_TAB_ID_KEY_SESSION]: currentLeader } =
-      await chrome.storage.session.get(LEADER_TAB_ID_KEY_SESSION);
-
-    if (currentLeader !== newLeaderId) {
-      console.log(`[LeaderElection] 새로운 리더 선출: 탭 ${newLeaderId}`);
-      await chrome.storage.session.set({ [LEADER_TAB_ID_KEY_SESSION]: newLeaderId });
-      await broadcastLeaderUpdate(newLeaderId);
-    }
+    if (electionGeneration !== leaderElectionGeneration) return;
+    await setLeaderState(newLeaderId);
   } catch (e) {
     console.warn(`[LeaderElection] electNewLeader(${newLeaderId}) 실행 중 오류:`, e);
-    // 새 탭 등 오류 발생 시에도 "일시중지" 옵션에 따라 리더 해제
-    const settings = await chrome.storage.local.get(PAUSE_ON_INACTIVE_KEY);
-    if (settings[PAUSE_ON_INACTIVE_KEY]) {
-      await removeLeader();
+    if (electionGeneration === leaderElectionGeneration) {
+      await handleIneligibleActiveTab(newLeaderId);
     }
+  }
+}
+
+async function isFocusedWindow(windowId: number): Promise<boolean> {
+  try {
+    return (await chrome.windows.get(windowId)).focused;
+  } catch {
+    return false;
   }
 }
 
@@ -185,11 +259,21 @@ chrome.windows.onFocusChanged.addListener(async (windowId: number) => {
 
 // 탭이 활성화되면 리더 선출을 시도
 chrome.tabs.onActivated.addListener(async (activeInfo: chrome.tabs.TabActiveInfo) => {
+  if (!(await isFocusedWindow(activeInfo.windowId))) return;
   await electNewLeader(activeInfo.tabId);
 });
 
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
-  if (areaName !== 'local' || !changes[AUTO_REFRESH_ALL_TABS_KEY]) return;
+  if (areaName !== 'local') return;
+
+  if (changes.shortcutMacroZEnabled?.newValue === false) {
+    await stopMacroState('Z', '다음 글 자동 넘김이 비활성화되어 매크로를 중지했습니다.');
+  }
+  if (changes.shortcutMacroXEnabled?.newValue === false) {
+    await stopMacroState('X', '이전 글 자동 넘김이 비활성화되어 매크로를 중지했습니다.');
+  }
+
+  if (!changes[AUTO_REFRESH_ALL_TABS_KEY]) return;
 
   const isEnabled = changes[AUTO_REFRESH_ALL_TABS_KEY].newValue === true;
   if (isEnabled) {
@@ -236,23 +320,22 @@ chrome.tabs.onRemoved.addListener(async (tabId: number) => {
   }
 });
 
-// 리더 탭이 다른 URL로 이동하는 경우
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.url) {
-    const { [LEADER_TAB_ID_KEY_SESSION]: currentLeader } =
-      await chrome.storage.session.get(LEADER_TAB_ID_KEY_SESSION);
+// URL을 읽지 않고 문서 로딩 시작만 감지합니다. DC 페이지라면 새 콘텐츠 스크립트가
+// 준비된 뒤 contentScriptLoaded 메시지로 다시 리더가 됩니다.
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  if (changeInfo.status !== 'loading') return;
+  const { [LEADER_TAB_ID_KEY_SESSION]: currentLeader } =
+    await chrome.storage.session.get(LEADER_TAB_ID_KEY_SESSION);
+  if (tabId !== currentLeader) return;
 
-    if (tabId === currentLeader && !tab.url?.includes('/board/')) {
-      console.log(
-        `[LeaderElection] 리더 탭 ${tabId}이 DC 갤러리를 벗어났습니다. 리더를 해제합니다.`
-      );
-      await removeLeader();
-    }
-  }
+  console.log(`[LeaderElection] 리더 탭 ${tabId}의 문서 이동을 감지해 리더를 해제합니다.`);
+  await removeLeader();
 });
 
 async function broadcastLeaderUpdate(newLeaderId: number | null): Promise<void> {
-  const tabs = await chrome.tabs.query({ url: '*://*.dcinside.com/*' });
+  // tabs 권한 없이 모든 탭의 기본 ID만 조회합니다. 메시지 수신기가 설치된 DC 탭과
+  // 사용자가 직접 UI를 연 탭만 응답하며 나머지 오류는 무시합니다.
+  const tabs = await chrome.tabs.query({});
   console.log(
     `[Broadcast] 모든 탭(${tabs.length}개)에 새로운 리더 ${newLeaderId} 정보를 전파합니다.`
   );
@@ -271,15 +354,39 @@ async function broadcastLeaderUpdate(newLeaderId: number | null): Promise<void> 
 // Command and Macro Logic (명령어 및 매크로 로직)
 // =================================================================
 
-chrome.commands.onCommand.addListener(async (command: string) => {
-  if (command === '01-toggle-z-macro') {
-    await toggleMacroState('Z');
-  } else if (command === '02-toggle-x-macro') {
-    await toggleMacroState('X');
+chrome.commands.onCommand.addListener(async (command: string, tab: chrome.tabs.Tab) => {
+  if (command !== 'toggle-favorites' || typeof tab.id !== 'number') return;
+
+  try {
+    await ensureGlobalUi(tab, 'favorites', 'toggle');
+  } catch (error) {
+    console.warn(`[Global UI] 탭 ${tab.id}에 즐겨찾기 창을 열지 못했습니다.`, error);
   }
 });
 
-async function toggleMacroState(macroType: MacroType): Promise<void> {
+async function stopMacroState(macroType: MacroType, reason?: string): Promise<void> {
+  const runningKey =
+    macroType === 'Z' ? MACRO_Z_RUNNING_KEY_SESSION : MACRO_X_RUNNING_KEY_SESSION;
+  const tabIdKey =
+    macroType === 'Z' ? MACRO_Z_TAB_ID_KEY_SESSION : MACRO_X_TAB_ID_KEY_SESSION;
+  const sessionData = await chrome.storage.session.get([runningKey, tabIdKey]);
+  const runningTabId = sessionData[tabIdKey];
+
+  await chrome.storage.session.set({ [runningKey]: false, [tabIdKey]: null });
+  if (sessionData[runningKey] !== true || typeof runningTabId !== 'number') return;
+
+  try {
+    await chrome.tabs.sendMessage(runningTabId, {
+      action: 'stopMacro',
+      type: macroType,
+      reason,
+    });
+  } catch {
+    // 탭이 닫혔거나 이동한 경우 세션 상태만 정리합니다.
+  }
+}
+
+async function toggleMacroState(macroType: MacroType, activeTabId: number): Promise<boolean> {
   const currentKey = macroType === 'Z' ? MACRO_Z_RUNNING_KEY_SESSION : MACRO_X_RUNNING_KEY_SESSION;
   const currentTabIdKey =
     macroType === 'Z' ? MACRO_Z_TAB_ID_KEY_SESSION : MACRO_X_TAB_ID_KEY_SESSION;
@@ -288,14 +395,6 @@ async function toggleMacroState(macroType: MacroType): Promise<void> {
   const otherMacroType: MacroType = macroType === 'Z' ? 'X' : 'Z';
 
   try {
-    const tabs = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-      url: '*://*.dcinside.com/*',
-    });
-    const activeTab = tabs.length > 0 ? tabs[0] : null;
-    const activeTabId = activeTab?.id;
-
     const sessionData = await chrome.storage.session.get([
       currentKey,
       currentTabIdKey,
@@ -305,19 +404,8 @@ async function toggleMacroState(macroType: MacroType): Promise<void> {
     const isCurrentlyRunning = sessionData[currentKey] === true;
 
     if (isCurrentlyRunning) {
-      await chrome.storage.session.set({ [currentKey]: false, [currentTabIdKey]: null });
-      if (sessionData[currentTabIdKey]) {
-        try {
-          await chrome.tabs.sendMessage(sessionData[currentTabIdKey], {
-            action: 'stopMacro',
-            type: macroType,
-          });
-        } catch (e) {
-          /* 탭이 이미 닫혔을 수 있음 */
-        }
-      }
+      await stopMacroState(macroType);
     } else {
-      if (!activeTabId) return;
       if (sessionData[otherKey] === true && sessionData[otherTabIdKey]) {
         try {
           await chrome.tabs.sendMessage(sessionData[otherTabIdKey], {
@@ -340,8 +428,10 @@ async function toggleMacroState(macroType: MacroType): Promise<void> {
         expectedTabId: activeTabId,
       });
     }
+    return true;
   } catch (error) {
     if (error instanceof Error) console.error(`${macroType} 매크로 상태 토글 오류:`, error.message);
+    return false;
   }
 }
 
@@ -376,10 +466,63 @@ chrome.runtime.onMessage.addListener(
         })();
         return true;
 
+      case 'getFavoritesCommand':
+        (async () => {
+          const commands = await chrome.commands.getAll();
+          const favoritesCommand = commands.find((command) => command.name === 'toggle-favorites');
+          sendResponse({ success: true, shortcut: favoritesCommand?.shortcut ?? '' });
+        })();
+        return true;
+
       case 'openShortcutsPage':
         chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
         sendResponse({ success: true });
         return false;
+
+      case 'openGlobalUi':
+        (async () => {
+          const { target, mode } = message as OpenGlobalUiMessage;
+          if (
+            (target !== 'favorites' && target !== 'shortcuts') ||
+            (mode !== 'open' && mode !== 'toggle')
+          ) {
+            sendResponse({ success: false, error: 'Invalid global UI request.' });
+            return;
+          }
+
+          const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (typeof activeTab?.id !== 'number') {
+            sendResponse({ success: false, error: '활성 탭을 찾을 수 없습니다.' });
+            return;
+          }
+
+          try {
+            await ensureGlobalUi(activeTab, target, mode);
+            sendResponse({ success: true });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.warn(`[Global UI] 탭 ${activeTab.id}에 UI를 열지 못했습니다.`, error);
+            sendResponse({ success: false, error: errorMessage });
+          }
+        })();
+        return true;
+
+      case 'toggleMacro':
+        (async () => {
+          const { type } = message as ToggleMacroMessage;
+          if (
+            typeof senderTabId !== 'number' ||
+            (type !== 'Z' && type !== 'X') ||
+            !isDcInsideUrl(sender.url)
+          ) {
+            sendResponse({ success: false, error: 'Invalid macro request.' });
+            return;
+          }
+
+          const success = await toggleMacroState(type, senderTabId);
+          sendResponse({ success, error: success ? undefined : '매크로 상태를 변경하지 못했습니다.' });
+        })();
+        return true;
 
       case 'getMyTabId':
         if (typeof senderTabId === 'number') {
@@ -398,45 +541,34 @@ chrome.runtime.onMessage.addListener(
 
       case 'contentScriptLoaded':
         (async () => {
-          if (typeof senderTabId === 'number') {
+          try {
+            if (typeof senderTabId !== 'number' || !isDcInsideUrl(sender.url)) {
+              sendResponse({ success: false, error: 'Invalid DC content-script context.' });
+              return;
+            }
+
             try {
               const tab = await chrome.tabs.get(senderTabId);
-              if (tab.active) {
+              if (
+                tab.active &&
+                typeof tab.windowId === 'number' &&
+                await isFocusedWindow(tab.windowId)
+              ) {
                 await electNewLeader(senderTabId);
               }
             } catch (e) {
               /* 탭이 닫히는 등의 경우 오류 발생 가능 */
             }
-          }
-        })();
-        return false;
-
-      case 'ensureGlobalUi':
-        (async () => {
-          if (typeof senderTabId !== 'number') {
-            sendResponse({ success: false, error: 'Sender has no tab ID.' });
-            return;
-          }
-
-          const { target, mode } = message as EnsureGlobalUiMessage;
-          if (
-            (target !== 'favorites' && target !== 'shortcuts') ||
-            (mode !== 'open' && mode !== 'toggle')
-          ) {
-            sendResponse({ success: false, error: 'Invalid global UI request.' });
-            return;
-          }
-
-          try {
-            await ensureGlobalUi(senderTabId, target, mode);
             sendResponse({ success: true });
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.warn(`[Global UI] 탭 ${senderTabId}에 UI를 열지 못했습니다.`, error);
-            sendResponse({ success: false, error: message });
+            sendResponse({
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         })();
         return true;
+
     }
     return false;
   }

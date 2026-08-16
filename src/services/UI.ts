@@ -6,11 +6,12 @@
  * @interface GalleryInfo
  * @description 갤러리 정보를 담는 인터페이스. navigateToGallery 함수에서 사용됩니다.
  * @property {string} galleryId - 갤러리 ID (예: 'programming')
- * @property {'board' | 'mgallery' | 'mini'} galleryType - 갤러리 종류
+ * @property {'board' | 'mgallery' | 'mini' | 'web'} galleryType - 갤러리 또는 일반 웹페이지 종류
  */
 export interface GalleryInfo {
   galleryId: string;
-  galleryType: 'board' | 'mgallery' | 'mini';
+  galleryType: 'board' | 'mgallery' | 'mini' | 'web';
+  url?: string;
 }
 
 /**
@@ -98,6 +99,17 @@ const UI = {
       console.error('페이지 이동을 위한 갤러리 정보가 유효하지 않습니다:', gallery);
       return;
     }
+    if (gallery.galleryType === 'web') {
+      try {
+        const url = new URL(gallery.url ?? gallery.galleryId);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Unsupported protocol');
+        window.location.assign(url.href);
+      } catch {
+        console.error('웹 즐겨찾기 주소가 유효하지 않습니다:', gallery);
+      }
+      return;
+    }
+
     const baseUrl = 'https://gall.dcinside.com';
     const listPath = 'board/lists';
     // 갤러리 타입이 'board'가 아니면 URL에 해당 타입을 추가합니다 (예: /mgallery).

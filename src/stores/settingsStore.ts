@@ -47,8 +47,6 @@ interface SettingsStoreReturn {
   numberLabelsEnabled: Ref<boolean>;
   numberNavigationEnabled: Ref<boolean>;
   showDateInListEnabled: Ref<boolean>;
-  macroZEnabled: Ref<boolean>;
-  macroXEnabled: Ref<boolean>;
   shortcutDRefreshCommentEnabled: Ref<boolean>;
   macroInterval: Ref<number>;
   favoritesPreviewEnabled: Ref<boolean>;
@@ -103,8 +101,6 @@ interface SettingsStoreReturn {
 const ALL_SWITCH_STORAGE_KEYS = [
   ...SHORTCUT_ACTIONS.map(getShortcutEnabledStorageKey),
   'shortcutDRefreshCommentEnabled',
-  'shortcutMacroZEnabled',
-  'shortcutMacroXEnabled',
   'altNumberEnabled',
   'numberLabelsEnabled',
   'numberNavigationEnabled',
@@ -130,8 +126,6 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
   const numberLabelsEnabled = ref<boolean>(true);
   const numberNavigationEnabled = ref<boolean>(true);
   const showDateInListEnabled = ref<boolean>(true);
-  const macroZEnabled = ref<boolean>(true);
-  const macroXEnabled = ref<boolean>(true);
   const shortcutDRefreshCommentEnabled = ref<boolean>(true);
   const macroInterval = ref<number>(5000);
   const favoritesPreviewEnabled = ref<boolean>(true);
@@ -167,12 +161,6 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
       Storage.getAutoRefreshHighlightColor().then((val) => (autoRefreshHighlightColor.value = val)),
       Storage.getAutoRefreshHighlightDuration().then(
         (val) => (autoRefreshHighlightDuration.value = val)
-      ),
-      Storage.getShortcutEnabled('shortcutMacroZEnabled').then(
-        (val) => (macroZEnabled.value = val)
-      ),
-      Storage.getShortcutEnabled('shortcutMacroXEnabled').then(
-        (val) => (macroXEnabled.value = val)
       ),
       Storage.getPauseOnInactiveEnabled().then((val) => (pauseOnInactiveEnabled.value = val)),
       Storage.getDcconAliasEnabled().then((val) => (dcconAliasEnabled.value = val)),
@@ -248,17 +236,7 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
 
   async function saveShortcutEnabled(storageKey: string, enabled: boolean): Promise<void> {
     await Storage.saveShortcutEnabled(storageKey, enabled);
-    switch (storageKey) {
-      case 'shortcutMacroZEnabled':
-        macroZEnabled.value = enabled;
-        break;
-      case 'shortcutMacroXEnabled':
-        macroXEnabled.value = enabled;
-        break;
-      default:
-        shortcutEnabled[storageKey] = enabled;
-        break;
-    }
+    shortcutEnabled[storageKey] = enabled;
   }
 
   function findConfiguredShortcutConflict(
@@ -453,8 +431,6 @@ export const useSettingsStore = defineStore('settings', (): SettingsStoreReturn 
     numberLabelsEnabled,
     numberNavigationEnabled,
     showDateInListEnabled,
-    macroZEnabled,
-    macroXEnabled,
     shortcutDRefreshCommentEnabled,
     macroInterval,
     favoritesPreviewEnabled,

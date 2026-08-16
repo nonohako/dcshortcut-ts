@@ -6,17 +6,15 @@
       <!-- 단축키 기능 설명 라벨 -->
       <span class="shortcut-toggle-label">
         {{ label }}
-        <!-- 매크로 단축키일 경우, 툴팁을 표시하는 각주 트리거 컴포넌트 포함 -->
         <FootnoteTrigger
-          v-if="isMacro && tooltipText"
+          v-if="tooltipText"
           :tooltip-text="tooltipText"
           style="margin-left: 6px;"
         />
       </span>
   
-      <!-- isMacro가 아니고 키 수정이 가능할 때만 키 입력 필드 렌더링 -->
       <input
-        v-if="!isMacro && isKeyEditable"
+        v-if="isKeyEditable"
         type="text"
         class="shortcut-toggle-input"
         :value="currentKeyDisplay"
@@ -35,17 +33,6 @@
         <span class="slider"></span>
       </label>
   
-      <!-- 매크로 단축키일 경우, 브라우저 설정 페이지로 이동하는 링크 표시 -->
-      <span
-        v-if="isMacro"
-        @click="openShortcutsPage"
-        class="change-shortcut-link"
-        title="브라우저 단축키 설정 페이지 열기"
-        role="button"
-        tabindex="0"
-      >
-        변경
-      </span>
     </div>
   </template>
   
@@ -53,7 +40,7 @@
   import { computed } from 'vue';
   import { getShortcutComboFromEvent } from '@/services/Shortcut';
   import UI from '@/services/UI';
-  import FootnoteTrigger from './FootnoteTrigger.vue'; // 각주/툴팁 컴포넌트
+  import FootnoteTrigger from './FootnoteTrigger.vue';
   
   // =================================================================
   // Type Definitions (타입 정의)
@@ -70,7 +57,6 @@
   storageKeyEnabled?: string;
   storageKeyKey?: string;
   currentKey?: string;
-  isMacro?: boolean;
   prefix?: string;
   tooltipText?: string;
   isKeyEditable?: boolean;
@@ -100,7 +86,6 @@
    * @description `defineProps`와 `withDefaults`를 사용하여 props를 정의하고 기본값을 설정합니다.
    */
    const props = withDefaults(defineProps<ShortcutToggleProps>(), {
-  isMacro: false,
   prefix: '',
   tooltipText: '',
   isKeyEditable: true,
@@ -168,12 +153,6 @@
   }
 };
   
-  /**
-   * '변경' 링크 클릭 시, 백그라운드 스크립트에 메시지를 보내 브라우저 단축키 설정 페이지를 엽니다.
-   */
-   const openShortcutsPage = (): void => {
-  chrome.runtime.sendMessage({ action: 'openShortcutsPage' });
-};
   </script>
   
   <style scoped>
@@ -282,24 +261,4 @@
     transform: translateX(18px);
   }
   
-  .change-shortcut-link {
-    background-color: var(--dc-color-key-bg);
-    border: 1px solid var(--dc-color-border-strong);
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 13px;
-    color: var(--dc-color-key-text);
-    text-decoration: none;
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-    flex-shrink: 0;
-    margin-left: 8px;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-  
-  .change-shortcut-link:hover {
-    background-color: var(--dc-color-surface-hover);
-    border-color: var(--dc-color-border);
-  }
   </style>

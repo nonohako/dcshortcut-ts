@@ -29,17 +29,19 @@ const POPUP_SHORTCUT_DEFINITIONS = [
   { action: 'NextProfile', defaultKey: ']', label: '다음 폴더' },
   { action: 'SubmitComment', defaultKey: 'Alt+D', label: '댓글 등록' },
   { action: 'SubmitImagePost', defaultKey: 'Alt+W', label: '글 등록' },
-  { action: 'ToggleModal', defaultKey: 'Alt+`', label: '즐겨찾기창 열기' },
+  { action: 'MacroZ', defaultKey: 'Alt+Z', label: '다음 글 자동 넘김' },
+  { action: 'MacroX', defaultKey: 'Alt+X', label: '이전 글 자동 넘김' },
 ] as const;
 
 const getPopupShortcutKeyStorageKey = (action: string): string => `shortcut${action}Key`;
 
 const FIXED_SHORTCUTS: Record<string, string> = {
   'Alt + 0-9': '즐겨찾기 이동/등록',
-  'Alt + Z / X': '자동 넘김 시작/중지',
   '` 또는 .': '글 번호로 이동',
   '0-9': '목록의 글 바로가기',
 };
+
+type GlobalUiTarget = 'favorites' | 'shortcuts';
 
 // =================================================================
 // UI Element Selectors (UI 요소 선택)
@@ -157,26 +159,27 @@ function createListItem(key: string, action: string): HTMLLIElement {
 }
 
 /**
- * 현재 활성화된 탭에 메시지를 보냅니다.
- * @param {object} message - 보낼 메시지 객체 (예: { action: 'openFavoritesModal' }).
- * @returns {Promise<boolean>} 메시지 전송 성공 여부.
+ * 팝업을 연 사용자 동작으로 받은 activeTab 권한을 이용해 현재 탭에 UI를 엽니다.
  */
-async function sendMessageToActiveTab(message: { action: string }): Promise<boolean> {
+async function openGlobalUi(target: GlobalUiTarget): Promise<boolean> {
   try {
-    // 현재 활성화된 창의 활성 탭을 조회합니다.
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    // 해당 탭이 DC인사이드 페이지인지 확인합니다.
-    if (tab?.id && tab.url?.includes('dcinside.com')) {
-      await chrome.tabs.sendMessage(tab.id, message);
-      return true; // 성공
-    }
-    throw new Error('Not a DCInside page.'); // DC인사이드 페이지가 아니면 에러 발생
+    const response = await chrome.runtime.sendMessage({
+      action: 'openGlobalUi',
+      target,
+      mode: 'open',
+    });
+    if (response?.success === true) return true;
+    throw new Error(response?.error || '현재 페이지에 UI를 열 수 없습니다.');
   } catch (error) {
     if (statusMessageEl) {
-      statusMessageEl.textContent = 'DCInside 페이지에서 사용해주세요.';
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isRestrictedPage = /Cannot access|chrome:\/\/|extensions gallery/i.test(errorMessage);
+      statusMessageEl.textContent = isRestrictedPage
+        ? 'Chrome 내부 페이지에서는 열 수 없습니다. 일반 웹페이지에서 사용해주세요.'
+        : errorMessage;
       statusMessageEl.style.display = 'block';
     }
-    return false; // 실패
+    return false;
   }
 }
 
@@ -201,9 +204,20 @@ function renderCustomShortcuts(settings: Record<string, string>): void {
 /**
  * 고정 단축키 목록을 화면에 렌더링합니다.
  */
-function renderFixedShortcuts(): void {
+async function renderFixedShortcuts(): Promise<void> {
   if (!fixedShortcutListEl) return;
   fixedShortcutListEl.innerHTML = ''; // 기존 목록 초기화
+
+  try {
+    const commands = await chrome.commands.getAll();
+    const favoritesCommand = commands.find((command) => command.name === 'toggle-favorites');
+    const shortcut = favoritesCommand?.shortcut
+      ? favoritesCommand.shortcut.replaceAll('+', ' + ')
+      : '미지정';
+    fixedShortcutListEl.appendChild(createListItem(shortcut, '즐겨찾기창 열기 (Chrome)'));
+  } catch (error) {
+    console.warn('Chrome 단축키를 불러오지 못했습니다.', error);
+  }
 
   // fixed 객체를 순회하며 각 단축키에 대한 리스트 아이템을 생성하고 추가합니다.
   for (const key in FIXED_SHORTCUTS) {
@@ -243,7 +257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 1. 단축키 목록 렌더링
-  renderFixedShortcuts();
+  await renderFixedShortcuts();
   try {
     const settings = await loadSettings();
     renderCustomShortcuts(settings);
@@ -257,7 +271,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (openFavoritesBtn) {
     openFavoritesBtn.addEventListener('click', async () => {
       // 즐겨찾기 모달 열기 메시지를 보내고, 성공하면 팝업 창을 닫습니다.
-      if (await sendMessageToActiveTab({ action: 'openFavoritesModal' })) {
+      if (await openGlobalUi('favorites')) {
         window.close();
       }
     });
@@ -266,7 +280,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (openShortcutsBtn) {
     openShortcutsBtn.addEventListener('click', async () => {
       // 단축키 설정 모달 열기 메시지를 보내고, 성공하면 팝업 창을 닫습니다.
-      if (await sendMessageToActiveTab({ action: 'openShortcutManagerModal' })) {
+      if (await openGlobalUi('shortcuts')) {
         window.close();
       }
     });

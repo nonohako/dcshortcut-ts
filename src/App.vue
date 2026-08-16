@@ -35,7 +35,9 @@
   </script>
   
   <style>
-  :root {
+  :root,
+  :host,
+  #dc-ShortCut-app {
     --dc-color-bg: #f8f9fa;
     --dc-color-surface: #ffffff;
     --dc-color-surface-muted: #f5f5f5;
@@ -82,6 +84,7 @@
   }
 
   :root[data-dc-theme='dark'],
+  :host([data-dc-theme='dark']),
   #dc-ShortCut-app[data-dc-theme='dark'] {
     --dc-color-bg: #15181c;
     --dc-color-surface: #1d2228;

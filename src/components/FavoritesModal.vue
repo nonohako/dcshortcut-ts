@@ -94,11 +94,11 @@
               :disabled="folders.length <= 1"
               @click="handleRemoveFolder"
             >폴더 삭제</button>
-            <button class="small-button primary" @click="toggleSelectionMode">
+            <button class="small-button" @click="toggleSelectionMode">
               {{ selectionMode ? '선택 종료' : '여러 항목 선택' }}
             </button>
-            <button class="small-button primary add-current-button" @click="addCurrentGallery">
-              ＋ 현재 갤러리 추가
+            <button class="small-button primary add-current-button" @click="addCurrentFavorite">
+              {{ addCurrentFavoriteLabel }}
             </button>
           </div>
         </div>
@@ -240,6 +240,13 @@
       <button class="footer-button" @click="closeModal">닫기</button>
     </footer>
 
+    <Transition name="favorites-undo">
+      <div v-if="pendingUndo" class="favorites-undo-toast" role="status" aria-live="polite">
+        <span>{{ pendingUndo.message }}</span>
+        <button type="button" @click="undoLastFavoritesChange">실행 취소</button>
+      </div>
+    </Transition>
+
     <div
       class="modal-resize-handle"
       role="separator"
@@ -251,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import Gallery from '@/services/Gallery';
 import Storage from '@/services/Storage';
@@ -261,7 +268,13 @@ import { FAVORITES_LAYOUT_KEY } from '@/services/Global';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUiStore } from '@/stores/uiStore';
-import type { FavoriteFolder, FavoriteGalleryInfo, FavoriteItem, FavoriteShortcut } from '@/types';
+import type {
+  FavoriteFolder,
+  FavoriteGalleryInfo,
+  FavoriteItem,
+  FavoriteShortcut,
+  FavoritesStateSnapshot,
+} from '@/types';
 
 const favoritesStore = useFavoritesStore();
 const settingsStore = useSettingsStore();
@@ -280,6 +293,16 @@ const dragOverFolderId = ref<string | null>(null);
 const dragPreviewOrderIds = ref<string[] | null>(null);
 const customShortcutItemId = ref<string | null>(null);
 const customShortcutInput = ref<HTMLInputElement | null>(null);
+
+interface PendingUndo {
+  message: string;
+  snapshot: FavoritesStateSnapshot;
+  expectedDataKey: string;
+}
+
+const pendingUndo = ref<PendingUndo | null>(null);
+let undoTimer: number | null = null;
+const UNDO_DURATION_MS = 7000;
 
 interface FavoritesLayoutPreferences {
   width: number;
@@ -362,6 +385,73 @@ const folderPanelStyle = computed(() =>
         minWidth: `${sidebarWidth.value}px`,
       }
 );
+
+const isDcInsidePage = (() => {
+  const hostname = window.location.hostname.toLocaleLowerCase();
+  return hostname === 'dcinside.com' || hostname.endsWith('.dcinside.com');
+})();
+
+const addCurrentFavoriteLabel = computed(() =>
+  isDcInsidePage ? '＋ 현재 갤러리 추가' : '＋ 현재 페이지 추가'
+);
+
+const getFavoritesDataKey = (snapshot: FavoritesStateSnapshot): string =>
+  JSON.stringify(snapshot.data);
+
+const dismissPendingUndo = (): void => {
+  if (undoTimer !== null) window.clearTimeout(undoTimer);
+  undoTimer = null;
+  pendingUndo.value = null;
+};
+
+const showPendingUndo = (
+  message: string,
+  snapshot: FavoritesStateSnapshot,
+  expectedDataKey: string
+): void => {
+  dismissPendingUndo();
+  pendingUndo.value = { message, snapshot, expectedDataKey };
+  undoTimer = window.setTimeout(dismissPendingUndo, UNDO_DURATION_MS);
+};
+
+const performUndoableChange = async <T,>(message: string, operation: () => Promise<T>): Promise<T> => {
+  dismissPendingUndo();
+  const before = favoritesStore.getStateSnapshot();
+  try {
+    return await operation();
+  } finally {
+    const after = favoritesStore.getStateSnapshot();
+    const beforeDataKey = getFavoritesDataKey(before);
+    const afterDataKey = getFavoritesDataKey(after);
+    if (beforeDataKey !== afterDataKey) showPendingUndo(message, before, afterDataKey);
+  }
+};
+
+const undoLastFavoritesChange = async (): Promise<void> => {
+  const undo = pendingUndo.value;
+  if (!undo) return;
+
+  if (getFavoritesDataKey(favoritesStore.getStateSnapshot()) !== undo.expectedDataKey) {
+    dismissPendingUndo();
+    UI.showAlert('이후에 다른 변경이 있어 되돌릴 수 없습니다.');
+    return;
+  }
+
+  dismissPendingUndo();
+  try {
+    await favoritesStore.restoreStateSnapshot(undo.snapshot);
+    searchQuery.value = '';
+    resetSelection();
+    UI.showAlert('즐겨찾기 변경을 되돌렸습니다.');
+  } catch (error) {
+    UI.showAlert(error instanceof Error ? error.message : '즐겨찾기 변경을 되돌리지 못했습니다.');
+  }
+};
+
+// 되돌리기 대상 이후에 다른 로컬/동기화 변경이 생기면 오래된 스냅샷을 즉시 폐기합니다.
+watch(folders, () => {
+  if (pendingUndo.value) dismissPendingUndo();
+}, { deep: true, flush: 'sync' });
 
 const parseStoredLayout = (value: unknown): FavoritesLayoutPreferences => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return DEFAULT_LAYOUT;
@@ -676,7 +766,9 @@ const handleRemoveFolder = async (): Promise<void> => {
   const count = activeFavorites.value.length;
   if (!window.confirm(`'${activeFolderName.value}' 폴더와 즐겨찾기 ${count}개를 삭제할까요?`)) return;
   try {
-    await favoritesStore.removeFolder(activeFolderId.value);
+    await performUndoableChange('폴더를 삭제했습니다.', () =>
+      favoritesStore.removeFolder(activeFolderId.value)
+    );
     searchQuery.value = '';
     resetSelection();
   } catch (error) {
@@ -689,30 +781,58 @@ const navigateTo = (gallery: FavoriteGalleryInfo): void => {
   uiStore.closeModal();
 };
 
-const addCurrentGallery = async (): Promise<void> => {
-  const info = Gallery.getInfo();
-  if (!info.galleryId || !['board', 'mgallery', 'mini'].includes(info.galleryType)) {
-    UI.showAlert('즐겨찾기 등록은 갤러리 페이지에서만 가능합니다.');
-    return;
-  }
-
+const addCurrentFavorite = async (): Promise<void> => {
   try {
-    const result = await favoritesStore.addFavorite({
-      galleryType: info.galleryType as FavoriteGalleryInfo['galleryType'],
-      galleryId: info.galleryId,
-      name: info.galleryName,
-    });
-    UI.showAlert(result.created ? '현재 갤러리를 추가했습니다.' : '이미 등록된 갤러리입니다.');
+    let favorite: FavoriteGalleryInfo;
+    let itemLabel: '갤러리' | '페이지';
+
+    if (isDcInsidePage) {
+      const info = Gallery.getInfo();
+      if (!info.galleryId || !['board', 'mgallery', 'mini'].includes(info.galleryType)) {
+        UI.showAlert('즐겨찾기 등록은 갤러리 페이지에서만 가능합니다.');
+        return;
+      }
+      favorite = {
+        galleryType: info.galleryType as FavoriteGalleryInfo['galleryType'],
+        galleryId: info.galleryId,
+        name: info.galleryName,
+      };
+      itemLabel = '갤러리';
+    } else {
+      const url = new URL(window.location.href);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        UI.showAlert('이 페이지 주소는 즐겨찾기에 등록할 수 없습니다.');
+        return;
+      }
+      url.hash = '';
+      const title = document.title.replace(/\s+/g, ' ').trim().slice(0, 120);
+      favorite = {
+        galleryType: 'web',
+        galleryId: url.href,
+        url: url.href,
+        name: title || url.hostname,
+      };
+      itemLabel = '페이지';
+    }
+
+    const result = await favoritesStore.addFavorite(favorite);
+    UI.showAlert(result.created ? `현재 ${itemLabel}를 추가했습니다.` : `이미 등록된 ${itemLabel}입니다.`);
   } catch (error) {
     UI.showAlert(error instanceof Error ? error.message : '즐겨찾기를 추가하지 못했습니다.');
   }
 };
 
 const removeOne = async (itemId: string, sourceFolderId: string): Promise<void> => {
-  await favoritesStore.removeFavorites([itemId], sourceFolderId);
-  const next = new Set(selectedIds.value);
-  next.delete(itemId);
-  selectedIds.value = next;
+  try {
+    await performUndoableChange('즐겨찾기를 삭제했습니다.', () =>
+      favoritesStore.removeFavorites([itemId], sourceFolderId)
+    );
+    const next = new Set(selectedIds.value);
+    next.delete(itemId);
+    selectedIds.value = next;
+  } catch (error) {
+    UI.showAlert(error instanceof Error ? error.message : '즐겨찾기를 삭제하지 못했습니다.');
+  }
 };
 
 const groupFavoritesByFolder = (favorites: DisplayFavorite[]): Map<string, DisplayFavorite[]> => {
@@ -729,9 +849,12 @@ const removeSelectedFavorites = async (): Promise<void> => {
   if (selectedIds.value.size === 0) return;
   if (!window.confirm(`선택한 즐겨찾기 ${selectedIds.value.size}개를 삭제할까요?`)) return;
   try {
-    for (const [folderId, favorites] of groupFavoritesByFolder(selectedFavorites.value)) {
-      await favoritesStore.removeFavorites(favorites.map((favorite) => favorite.id), folderId);
-    }
+    const count = selectedIds.value.size;
+    await performUndoableChange(`${count}개 즐겨찾기를 삭제했습니다.`, async () => {
+      for (const [folderId, favorites] of groupFavoritesByFolder(selectedFavorites.value)) {
+        await favoritesStore.removeFavorites(favorites.map((favorite) => favorite.id), folderId);
+      }
+    });
     resetSelection();
   } catch (error) {
     UI.showAlert(error instanceof Error ? error.message : '즐겨찾기를 삭제하지 못했습니다.');
@@ -742,15 +865,17 @@ const moveSelectedFavorites = async (): Promise<void> => {
   if (!batchTargetFolderId.value || selectedIds.value.size === 0) return;
   try {
     let movedCount = 0;
-    for (const [sourceFolderId, favorites] of groupFavoritesByFolder(selectedFavorites.value)) {
-      if (sourceFolderId === batchTargetFolderId.value) continue;
-      await favoritesStore.moveFavorites(
-        favorites.map((favorite) => favorite.id),
-        sourceFolderId,
-        batchTargetFolderId.value
-      );
-      movedCount += favorites.length;
-    }
+    await performUndoableChange('즐겨찾기를 일괄 이동했습니다.', async () => {
+      for (const [sourceFolderId, favorites] of groupFavoritesByFolder(selectedFavorites.value)) {
+        if (sourceFolderId === batchTargetFolderId.value) continue;
+        await favoritesStore.moveFavorites(
+          favorites.map((favorite) => favorite.id),
+          sourceFolderId,
+          batchTargetFolderId.value
+        );
+        movedCount += favorites.length;
+      }
+    });
     UI.showAlert(
       movedCount > 0
         ? `${movedCount}개 즐겨찾기를 이동했습니다.`
@@ -772,7 +897,9 @@ const moveSingleFavorite = async (
   select.value = '';
   if (!targetFolderId) return;
   try {
-    await favoritesStore.moveFavorites([itemId], sourceFolderId, targetFolderId);
+    await performUndoableChange('즐겨찾기를 이동했습니다.', () =>
+      favoritesStore.moveFavorites([itemId], sourceFolderId, targetFolderId)
+    );
   } catch (error) {
     UI.showAlert(error instanceof Error ? error.message : '즐겨찾기를 이동하지 못했습니다.');
   }
@@ -960,16 +1087,20 @@ const handleFavoritesListDragOver = (event: DragEvent): void => {
 const handleDropOnFolder = async (targetFolderId: string): Promise<void> => {
   try {
     if (draggedFolderId.value) {
-      await favoritesStore.reorderFolder(draggedFolderId.value, targetFolderId);
+      await performUndoableChange('폴더 순서를 변경했습니다.', () =>
+        favoritesStore.reorderFolder(draggedFolderId.value!, targetFolderId)
+      );
     } else if (
       draggedFavoriteIds.value.length > 0 &&
       draggedSourceFolderId.value &&
       draggedSourceFolderId.value !== targetFolderId
     ) {
-      await favoritesStore.moveFavorites(
-        draggedFavoriteIds.value,
-        draggedSourceFolderId.value,
-        targetFolderId
+      await performUndoableChange('즐겨찾기를 이동했습니다.', () =>
+        favoritesStore.moveFavorites(
+          draggedFavoriteIds.value,
+          draggedSourceFolderId.value!,
+          targetFolderId
+        )
       );
       UI.showAlert(`${draggedFavoriteIds.value.length}개 즐겨찾기를 이동했습니다.`);
       resetSelection();
@@ -995,7 +1126,9 @@ const commitFavoriteDrop = async (): Promise<void> => {
   }
 
   try {
-    await favoritesStore.setFavoriteOrder(sourceFolderId, previewOrderIds);
+    await performUndoableChange('즐겨찾기 순서를 변경했습니다.', () =>
+      favoritesStore.setFavoriteOrder(sourceFolderId, previewOrderIds)
+    );
   } catch (error) {
     UI.showAlert(error instanceof Error ? error.message : '순서를 변경하지 못했습니다.');
   } finally {
@@ -1024,6 +1157,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleViewportResize);
   detachResizeListeners();
+  dismissPendingUndo();
 });
 </script>
 
@@ -1188,6 +1322,31 @@ button { color: inherit; }
 .footer-button:hover { background: var(--dc-color-text-secondary); }
 .settings-button { background: var(--dc-color-success); }
 .settings-button:hover { background: var(--dc-color-success-hover); }
+
+.favorites-undo-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  z-index: 7;
+  min-width: 240px;
+  max-width: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--dc-color-border-strong);
+  border-radius: 8px;
+  color: var(--dc-color-tooltip-text);
+  background: var(--dc-color-tooltip-bg);
+  box-shadow: var(--dc-shadow-strong);
+  transform: translateX(-50%);
+  font-size: 12.5px;
+}
+.favorites-undo-toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.favorites-undo-toast button { flex: 0 0 auto; padding: 3px 5px; border: 0; color: var(--dc-color-accent); background: transparent; font-weight: 700; cursor: pointer; }
+.favorites-undo-enter-active, .favorites-undo-leave-active { transition: opacity 120ms ease, transform 120ms ease; }
+.favorites-undo-enter-from, .favorites-undo-leave-to { opacity: 0; transform: translate(-50%, 6px); }
 
 .modal-resize-handle { position: absolute; right: 0; bottom: 0; width: 34px; height: 34px; z-index: 5; cursor: nwse-resize; touch-action: none; }
 .modal-resize-handle::before { content: none; }

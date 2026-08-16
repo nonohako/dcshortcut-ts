@@ -17,7 +17,8 @@ export const SHORTCUT_DEFINITIONS = [
   { action: 'NextProfile', defaultKey: ']', label: '다음 폴더' },
   { action: 'SubmitComment', defaultKey: 'Alt+D', label: '댓글 등록', altRequired: true },
   { action: 'SubmitImagePost', defaultKey: 'Alt+W', label: '글 등록', altRequired: true },
-  { action: 'ToggleModal', defaultKey: 'Alt+`', label: '즐겨찾기창 열기', altRequired: true },
+  { action: 'MacroZ', defaultKey: 'Alt+Z', label: '다음 글 자동 넘김', altRequired: true },
+  { action: 'MacroX', defaultKey: 'Alt+X', label: '이전 글 자동 넘김', altRequired: true },
 ] as const;
 
 export type ShortcutAction = (typeof SHORTCUT_DEFINITIONS)[number]['action'];
@@ -40,7 +41,6 @@ const ALT_REQUIRED_SHORTCUT_ACTIONS = new Set<ShortcutAction>(
 export const LEGACY_SHORTCUT_ENABLED_KEYS: Partial<Record<ShortcutAction, string>> = {
   SubmitComment: 'shortcutSubmitCommentKeyEnabled',
   SubmitImagePost: 'shortcutSubmitImagePostKeyEnabled',
-  ToggleModal: 'shortcutToggleModalKeyEnabled',
 };
 
 export const getShortcutKeyStorageKey = (action: ShortcutAction): string =>

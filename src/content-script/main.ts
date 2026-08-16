@@ -16,6 +16,7 @@ import Gallery from '@/services/Gallery';
 import AutoRefresher from '@/services/AutoRefresher';
 import SearchPageEnhancer from '@/services/SearchPageEnhancer';
 import DcconAlias from '@/services/DcconAlias';
+import { UI_PORTAL_TARGET_KEY } from '@/services/UiPortal';
 import {
   FAVORITE_GALLERIES_KEY,
   ACTIVE_FAVORITES_PROFILE_KEY,
@@ -37,6 +38,7 @@ type MessageAction =
   | 'openShortcutManagerModal'
   | 'showGlobalFavoritesModal'
   | 'showGlobalShortcutManagerModal'
+  | 'getDcTabContext'
   | 'startMacro'
   | 'stopMacro'
   | 'leaderUpdate'
@@ -94,6 +96,9 @@ const systemThemeMediaQuery =
     ? window.matchMedia('(prefers-color-scheme: dark)')
     : null;
 let systemThemeListener: ((event: MediaQueryListEvent) => void) | null = null;
+let appHostElement: HTMLElement | null = null;
+let appMountElement: HTMLElement | null = null;
+let appPortalElement: HTMLElement | null = null;
 const isDcInsidePage =
   window.location.hostname === 'dcinside.com' || window.location.hostname.endsWith('.dcinside.com');
 
@@ -133,9 +138,8 @@ function setSystemThemeListenerEnabled(enabled: boolean): void {
 
 function applyThemeMode(mode: ThemeMode): void {
   const appliedTheme = resolveAppliedTheme(mode);
-  const mountEl = document.getElementById('dc-ShortCut-app');
-  if (mountEl) {
-    mountEl.setAttribute('data-dc-theme', appliedTheme);
+  for (const element of [appHostElement, appMountElement, appPortalElement]) {
+    element?.setAttribute('data-dc-theme', appliedTheme);
   }
   // 디시콘 별칭 팝업 등 DC 페이지의 body 직속 요소도 동일 테마를 참조합니다.
   // 일반 사이트에서는 호스트 문서의 html 속성을 변경하지 않습니다.
@@ -221,12 +225,6 @@ function setupStorageListener(): void {
           case 'numberLabelsEnabled':
             settingsStore.numberLabelsEnabled = newValue;
             if (isDcInsidePage) Posts.addNumberLabels(newValue);
-            break;
-          case 'shortcutMacroZEnabled':
-            settingsStore.macroZEnabled = newValue;
-            break;
-          case 'shortcutMacroXEnabled':
-            settingsStore.macroXEnabled = newValue;
             break;
           case 'shortcutDRefreshCommentEnabled':
             settingsStore.shortcutDRefreshCommentEnabled = newValue;
@@ -336,6 +334,14 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       break;
     }
 
+    case 'getDcTabContext':
+      sendResponse({
+        success: true,
+        isDcInsidePage,
+        isRefreshablePage: isDcInsidePage && Gallery.isRefreshablePage(),
+      });
+      break;
+
     case 'startMacro':
       (async () => {
         const { type: macroType, expectedTabId } = message as StartMacroMessage;
@@ -345,7 +351,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
             return sendResponse({ success: false, message: 'Mismatched Tab ID' });
           }
           const isUiEnabled =
-            macroType === 'Z' ? settingsStore.macroZEnabled : settingsStore.macroXEnabled;
+            settingsStore.shortcutEnabled[`shortcutMacro${macroType}Enabled`];
           if (!isUiEnabled) {
             return sendResponse({ success: false, message: 'UI setting is disabled.' });
           }
@@ -514,7 +520,9 @@ async function initialize(): Promise<void> {
       AutoRefresher.applyPendingHighlights();
     });
 
-    chrome.runtime.sendMessage({ action: 'contentScriptLoaded' });
+    void chrome.runtime.sendMessage({ action: 'contentScriptLoaded' }).catch((error) => {
+      console.warn('[LeaderElection] 콘텐츠 스크립트 준비 알림 실패:', error);
+    });
 
     handleAutoRefresherState();
 
@@ -533,17 +541,78 @@ if (document.readyState === 'loading') {
   initialize();
 }
 
-const mountApplication = (): void => {
-  if (document.getElementById('dc-ShortCut-app') || !document.body) return;
+const UI_HOST_ID = 'dc-ShortCut-host';
+const SHADOW_STYLESHEET_PATH = 'content-script.css';
+
+function loadShadowStylesheet(shadowRoot: ShadowRoot): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stylesheet = document.createElement('link');
+    const timeoutId = window.setTimeout(
+      () => reject(new Error('Shadow DOM 스타일시트 로드 시간이 초과되었습니다.')),
+      3000
+    );
+    const finish = (callback: () => void): void => {
+      window.clearTimeout(timeoutId);
+      callback();
+    };
+    stylesheet.rel = 'stylesheet';
+    stylesheet.href = chrome.runtime.getURL(SHADOW_STYLESHEET_PATH);
+    stylesheet.addEventListener('load', () => finish(resolve), { once: true });
+    stylesheet.addEventListener(
+      'error',
+      () =>
+        finish(() =>
+          reject(new Error(`Shadow DOM 스타일시트를 불러오지 못했습니다: ${stylesheet.href}`))
+        ),
+      { once: true }
+    );
+    shadowRoot.appendChild(stylesheet);
+  });
+}
+
+const mountApplication = async (): Promise<void> => {
+  if (document.getElementById(UI_HOST_ID) || !document.body) return;
+
+  // 호스트 페이지의 div/button/input 전역 규칙이 확장 UI로 전파되지 않도록
+  // 전용 커스텀 요소와 Shadow DOM 경계를 사용합니다. 호스트 요소 자체에는
+  // 인라인 important 초기화를 적용해 '*' 같은 규칙까지 차단합니다.
+  const host = document.createElement('dc-shortcut-ui');
+  host.id = UI_HOST_ID;
+  host.style.setProperty('all', 'initial', 'important');
+  host.style.setProperty('display', 'block', 'important');
+  host.style.setProperty('position', 'static', 'important');
+  host.style.setProperty('opacity', '1', 'important');
+  host.style.setProperty('visibility', 'visible', 'important');
+  host.style.setProperty('filter', 'none', 'important');
+  host.style.setProperty('transform', 'none', 'important');
+
+  const shadowRoot = host.attachShadow({ mode: 'open' });
   const mountPoint = document.createElement('div');
   mountPoint.id = 'dc-ShortCut-app';
-  document.body.appendChild(mountPoint);
+  const portalPoint = document.createElement('div');
+  portalPoint.id = 'dc-ShortCut-portal';
+
+  const stylesheetReady = loadShadowStylesheet(shadowRoot);
+  shadowRoot.append(mountPoint, portalPoint);
+  document.body.appendChild(host);
+
+  appHostElement = host;
+  appMountElement = mountPoint;
+  appPortalElement = portalPoint;
   applyThemeMode(settingsStore.themeMode);
+
+  try {
+    await stylesheetReady;
+  } catch (error) {
+    console.error('[Main] Shadow DOM 스타일 초기화 실패:', error);
+  }
+
+  app.provide(UI_PORTAL_TARGET_KEY, portalPoint);
   app.mount(mountPoint);
 };
 
 if (document.body) {
-  mountApplication();
+  void mountApplication();
 } else {
-  document.addEventListener('DOMContentLoaded', mountApplication, { once: true });
+  document.addEventListener('DOMContentLoaded', () => void mountApplication(), { once: true });
 }

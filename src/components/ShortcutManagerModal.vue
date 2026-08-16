@@ -16,6 +16,31 @@
       <!-- 단축키 탭 -->
       <div v-show="activeTab === 'shortcuts'" class="tab-pane">
         <div class="shortcut-section">
+          <div class="shortcut-section-title">즐겨찾기/폴더</div>
+          <div class="shortcut-interval-setting browser-command-setting">
+            <div class="browser-command-description">
+              <span class="interval-label">전역 즐겨찾기창 열기</span>
+              <span class="browser-command-note" :class="{ unassigned: isFavoritesCommandLoaded && !favoritesCommandShortcut }">
+                {{ favoritesCommandDescription }}
+              </span>
+            </div>
+            <button type="button" class="browser-command-button" @click="openChromeShortcutsPage">
+              {{ isFavoritesCommandLoaded && !favoritesCommandShortcut ? '지금 지정' : '변경' }}
+            </button>
+          </div>
+          <ShortcutToggle :label="getShortcutLabel('PrevProfile')"
+            :enabled="settingsStore.shortcutEnabled.shortcutPrevProfileEnabled"
+            :currentKey="settingsStore.shortcutKeys.shortcutPrevProfileKey"
+            storageKeyEnabled="shortcutPrevProfileEnabled" storageKeyKey="shortcutPrevProfileKey"
+            @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
+          <ShortcutToggle :label="getShortcutLabel('NextProfile')"
+            :enabled="settingsStore.shortcutEnabled.shortcutNextProfileEnabled"
+            :currentKey="settingsStore.shortcutKeys.shortcutNextProfileKey"
+            storageKeyEnabled="shortcutNextProfileEnabled" storageKeyKey="shortcutNextProfileKey"
+            @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
+        </div>
+
+        <div class="shortcut-section">
           <div class="shortcut-section-title">페이지 탐색</div>
           <ShortcutToggle v-for="action in ['A', 'S', 'Z', 'X', 'Q', 'E', 'GlobalSearch', 'GallerySearch', 'F', 'G', 'R']" :key="action"
             :label="getShortcutLabel(action as ShortcutLabelKey)"
@@ -55,24 +80,6 @@
             @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
         </div>
 
-        <div class="shortcut-section">
-          <div class="shortcut-section-title">즐겨찾기/폴더</div>
-          <ShortcutToggle :label="getShortcutLabel('ToggleModal')"
-            :enabled="settingsStore.shortcutEnabled.shortcutToggleModalEnabled"
-            :currentKey="settingsStore.shortcutKeys.shortcutToggleModalKey"
-            storageKeyEnabled="shortcutToggleModalEnabled" storageKeyKey="shortcutToggleModalKey"
-            @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
-          <ShortcutToggle :label="getShortcutLabel('PrevProfile')"
-            :enabled="settingsStore.shortcutEnabled.shortcutPrevProfileEnabled"
-            :currentKey="settingsStore.shortcutKeys.shortcutPrevProfileKey"
-            storageKeyEnabled="shortcutPrevProfileEnabled" storageKeyKey="shortcutPrevProfileKey"
-            @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
-          <ShortcutToggle :label="getShortcutLabel('NextProfile')"
-            :enabled="settingsStore.shortcutEnabled.shortcutNextProfileEnabled"
-            :currentKey="settingsStore.shortcutKeys.shortcutNextProfileKey"
-            storageKeyEnabled="shortcutNextProfileEnabled" storageKeyKey="shortcutNextProfileKey"
-            @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
-        </div>
       </div>
 
       <!-- 고급 기능 탭 -->
@@ -249,11 +256,17 @@
       <!-- 매크로 탭 -->
       <div v-show="activeTab === 'macros'" class="tab-pane">
         <div class="shortcut-section">
-          <div class="shortcut-section-title">매크로 실행 설정</div>
-          <ShortcutToggle :label="getShortcutLabel('MacroZ')" :enabled="settingsStore.macroZEnabled" :isMacro="true"
-            storageKeyEnabled="shortcutMacroZEnabled" @update:enabled="updateMacroEnabled" />
-          <ShortcutToggle :label="getShortcutLabel('MacroX')" :enabled="settingsStore.macroXEnabled" :isMacro="true"
-            storageKeyEnabled="shortcutMacroXEnabled" @update:enabled="updateMacroEnabled" />
+          <div class="shortcut-section-title">매크로 실행 설정 (Alt 필수)</div>
+          <ShortcutToggle :label="getShortcutLabel('MacroZ')"
+            :enabled="settingsStore.shortcutEnabled.shortcutMacroZEnabled"
+            :currentKey="settingsStore.shortcutKeys.shortcutMacroZKey"
+            storageKeyEnabled="shortcutMacroZEnabled" storageKeyKey="shortcutMacroZKey"
+            @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
+          <ShortcutToggle :label="getShortcutLabel('MacroX')"
+            :enabled="settingsStore.shortcutEnabled.shortcutMacroXEnabled"
+            :currentKey="settingsStore.shortcutKeys.shortcutMacroXKey"
+            storageKeyEnabled="shortcutMacroXEnabled" storageKeyKey="shortcutMacroXKey"
+            @update:enabled="updateShortcutEnabled" @update:key="updateShortcutKey" />
           <div class="shortcut-interval-setting">
             <label for="macro-interval" class="interval-label">매크로 간격 (ms)
               <FootnoteTrigger :tooltipText="macroIntervalTooltipText" style="margin-left: 6px;" />
@@ -349,9 +362,7 @@ import FootnoteTrigger from './FootnoteTrigger.vue';
 
 type TabName = 'shortcuts' | 'advanced' | 'dccon' | 'refresh' | 'macros' | 'data';
 
-type ShortcutLabelKey = 'W' | 'C' | 'D' | 'R' | 'Q' | 'E' | 'F' | 'G' | 'A' | 'S' | 'GallerySearch' | 'GlobalSearch' | 'Z' | 'X' |
-  'PrevProfile' | 'NextProfile' | 'SubmitImagePost' | 'SubmitComment' |
-  'ToggleModal' | 'DRefresh' | 'MacroZ' | 'MacroX';
+type ShortcutLabelKey = ShortcutAction | 'DRefresh';
 
 interface DcconAliasListItem extends DcconAliasTarget {
   aliases: string[];
@@ -378,7 +389,7 @@ const SETTINGS_BACKUP_FILE_TYPE = 'dcshortcut-settings-backup';
 const SETTINGS_BACKUP_FILE_VERSION = 2;
 const RESET_CONFIRM_TEXT = '초기화';
 const DEFAULT_PROFILE_NAME = '기본';
-const GALLERY_TYPES = new Set<FavoriteGalleryInfo['galleryType']>(['board', 'mgallery', 'mini']);
+const GALLERY_TYPES = new Set<FavoriteGalleryInfo['galleryType']>(['board', 'mgallery', 'mini', 'web']);
 const FAVORITES_SLOT_KEY_REGEX = /^[0-9]$/;
 
 // =================================================================
@@ -399,6 +410,8 @@ const dcconAliasSearchQuery = ref<string>('');
 const isResetDialogVisible = ref<boolean>(false);
 const resetConfirmInput = ref<string>('');
 const allSwitchesTarget = ref<'on' | 'off' | null>(null);
+const favoritesCommandShortcut = ref('');
+const isFavoritesCommandLoaded = ref(false);
 let debounceTimer: number | null = null;
 
 // =================================================================
@@ -433,10 +446,9 @@ const dynamicLabels: ComputedRef<Record<ShortcutLabelKey, string>> = computed(()
     NextProfile: `${getKey('NextProfile')} - 다음 폴더`,
     SubmitImagePost: `${getKey('SubmitImagePost')} - 글 등록`,
     SubmitComment: `${getKey('SubmitComment')} - 댓글 등록`,
-    ToggleModal: `${getKey('ToggleModal')} - 즐겨찾기창 열기`,
     DRefresh: `D - 댓글 이동 시 댓글 새로고침`,
-    MacroZ: `Alt + Z - 다음 글 자동 넘김`,
-    MacroX: `Alt + X - 이전 글 자동 넘김`,
+    MacroZ: `${getKey('MacroZ')} - 다음 글 자동 넘김`,
+    MacroX: `${getKey('MacroX')} - 이전 글 자동 넘김`,
   };
 });
 
@@ -450,8 +462,6 @@ const allSwitchStates = computed<boolean[]>(() => [
   settingsStore.numberLabelsEnabled,
   settingsStore.numberNavigationEnabled,
   settingsStore.showDateInListEnabled,
-  settingsStore.macroZEnabled,
-  settingsStore.macroXEnabled,
   settingsStore.shortcutDRefreshCommentEnabled,
   settingsStore.favoritesPreviewEnabled,
   settingsStore.autoRefreshEnabled,
@@ -561,6 +571,12 @@ const filteredDcconAliasItems = computed<DcconAliasListItem[]>(() => {
   return dcconAliasItems.value.filter((item) =>
     item.aliases.some((alias) => matchesAliasSearchQuery(alias, query, consonantQuery))
   );
+});
+
+const favoritesCommandDescription = computed(() => {
+  if (!isFavoritesCommandLoaded.value) return '현재 지정된 단축키 확인 중…';
+  if (!favoritesCommandShortcut.value) return '현재 미지정 · Chrome 단축키에서 지정해주세요.';
+  return `현재 ${favoritesCommandShortcut.value.split('+').join(' + ')} · Chrome 단축키에서 변경`;
 });
 
 const updateDcconAliasSearchQuery = (event: Event): void => {
@@ -712,6 +728,18 @@ const normalizeFavoriteGallery = (value: unknown): FavoriteGalleryInfo | null =>
   const galleryType = GALLERY_TYPES.has(value.galleryType as FavoriteGalleryInfo['galleryType'])
     ? (value.galleryType as FavoriteGalleryInfo['galleryType'])
     : 'board';
+
+  if (galleryType === 'web') {
+    const rawUrl = typeof value.url === 'string' ? value.url : value.galleryId;
+    try {
+      const url = new URL(rawUrl);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      url.hash = '';
+      return { name: value.name, galleryId: url.href, galleryType, url: url.href };
+    } catch {
+      return null;
+    }
+  }
 
   return {
     name: value.name,
@@ -940,12 +968,6 @@ const setAllSwitches = async (enabled: boolean): Promise<void> => {
   } finally {
     allSwitchesTarget.value = null;
   }
-};
-
-const updateMacroEnabled = async (storageKey: string | undefined, enabled: boolean, label: string): Promise<void> => {
-  if (!storageKey) return;
-  await settingsStore.saveShortcutEnabled(storageKey, enabled);
-  UI.showAlert(`'${label}' 기능이 ${enabled ? '활성화' : '비활성화'}되었습니다.`);
 };
 
 const updateShortcutDRefreshCommentEnabled = async (storageKey: string | undefined, enabled: boolean): Promise<void> => {
@@ -1259,10 +1281,38 @@ const confirmResetApp = async (): Promise<void> => {
 
 const closeModal = (): void => uiStore.closeModal();
 
+const openChromeShortcutsPage = (): void => {
+  chrome.runtime.sendMessage({ action: 'openShortcutsPage' });
+};
+
+const loadFavoritesCommandShortcut = (): void => {
+  chrome.runtime.sendMessage(
+    { action: 'getFavoritesCommand' },
+    (response?: { success?: boolean; shortcut?: string }) => {
+      if (chrome.runtime.lastError) {
+        isFavoritesCommandLoaded.value = true;
+        favoritesCommandShortcut.value = '';
+        return;
+      }
+      favoritesCommandShortcut.value = response?.success && typeof response.shortcut === 'string'
+        ? response.shortcut
+        : '';
+      isFavoritesCommandLoaded.value = true;
+    }
+  );
+};
+
+const refreshFavoritesCommandWhenVisible = (): void => {
+  if (document.visibilityState === 'visible') loadFavoritesCommandShortcut();
+};
+
 onMounted(() => {
   settingsStore.loadSettings();
   void loadDcconAliasItems();
   chrome.storage.onChanged.addListener(storageChangeListener);
+  loadFavoritesCommandShortcut();
+  window.addEventListener('focus', loadFavoritesCommandShortcut);
+  document.addEventListener('visibilitychange', refreshFavoritesCommandWhenVisible);
   requestAnimationFrame(() => {
     isVisible.value = true;
   });
@@ -1270,6 +1320,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   chrome.storage.onChanged.removeListener(storageChangeListener);
+  window.removeEventListener('focus', loadFavoritesCommandShortcut);
+  document.removeEventListener('visibilitychange', refreshFavoritesCommandWhenVisible);
 });
 </script>
 
@@ -1469,6 +1521,46 @@ onUnmounted(() => {
 
 .theme-mode-setting {
   margin-bottom: 10px;
+}
+
+.browser-command-setting {
+  margin-top: 0;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.browser-command-description {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.browser-command-note {
+  color: var(--dc-color-text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.browser-command-note.unassigned {
+  color: var(--dc-color-danger);
+}
+
+.browser-command-button {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid var(--dc-color-border-strong);
+  border-radius: 6px;
+  background: var(--dc-color-surface);
+  color: var(--dc-color-accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.browser-command-button:hover {
+  border-color: var(--dc-color-accent);
+  background: var(--dc-color-surface-hover);
 }
 
 .theme-mode-select {

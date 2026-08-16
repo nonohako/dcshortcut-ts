@@ -1,11 +1,9 @@
 <template>
     <!--
-      <Teleport>는 Vue의 내장 컴포넌트로, 이 컴포넌트의 템플릿 일부를
-      현재 컴포넌트의 DOM 계층 구조 밖의 다른 위치로 "이동"시킵니다.
-      여기서는 툴팁을 <body> 태그의 직속 자식으로 렌더링하여,
-      부모 요소의 z-index나 overflow:hidden 스타일에 영향을 받지 않도록 합니다.
+      툴팁은 Shadow DOM 내부의 전용 포털로 이동합니다.
+      모달의 overflow에는 잘리지 않으면서 호스트 페이지 CSS와는 격리됩니다.
     -->
-    <Teleport to="body">
+    <Teleport :to="portalTarget">
       <div
         v-if="visible"
         ref="tooltipRef"
@@ -20,7 +18,8 @@
   </template>
   
   <script setup lang="ts">
-  import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, type Ref, type ComputedRef, type CSSProperties } from 'vue';
+  import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, inject, type Ref, type ComputedRef, type CSSProperties } from 'vue';
+  import { UI_PORTAL_TARGET_KEY } from '@/services/UiPortal';
   
   // =================================================================
   // Type Definitions (타입 정의)
@@ -67,6 +66,11 @@
     multilineThreshold: 35,
     viewportPadding: 5,
   });
+
+  const portalTarget = inject(UI_PORTAL_TARGET_KEY);
+  if (!portalTarget) {
+    throw new Error('DCShortcut UI 포털이 초기화되지 않았습니다.');
+  }
   
   /** @description 툴팁 div 요소의 DOM 참조를 저장합니다. */
   const tooltipRef: Ref<HTMLDivElement | null> = ref(null);
@@ -211,11 +215,7 @@
   });
   </script>
   
-  <!--
-    이 컴포넌트의 스타일은 전역적으로 적용되어야 합니다.
-    Teleport를 통해 <body>에 직접 렌더링되므로, scoped 스타일은 적용되지 않습니다.
-    App.vue 또는 전역 CSS 파일로 이 스타일을 옮기는 것이 가장 좋은 방법입니다.
-  -->
+  <!-- Shadow DOM 전용 포털에 Teleport되므로 전역 스타일로 유지합니다. -->
   <style>
   .global-tooltip-style {
     background-color: var(--dc-color-tooltip-bg);

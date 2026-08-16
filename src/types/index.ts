@@ -6,7 +6,9 @@
 export interface FavoriteGalleryInfo {
   name: string;
   galleryId: string;
-  galleryType: 'board' | 'mgallery' | 'mini';
+  galleryType: 'board' | 'mgallery' | 'mini' | 'web';
+  /** 일반 웹페이지 즐겨찾기의 이동 주소. 기존 갤러리 데이터에는 존재하지 않습니다. */
+  url?: string;
 }
 
 /**
@@ -28,6 +30,11 @@ export interface FavoriteFolder {
 export interface FavoritesData {
   version: 2;
   folders: FavoriteFolder[];
+}
+
+export interface FavoritesStateSnapshot {
+  data: FavoritesData;
+  activeFolderId: string;
 }
 
 export type LegacyFavoriteGalleries = Record<string, FavoriteGalleryInfo>;

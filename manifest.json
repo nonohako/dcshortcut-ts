@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DCInside ShortCut",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "디시인사이드 단축키 추가, 즐겨찾는 갤러리 단축키 기능",
   "icons": {
     "16": "icons/icon16.png",
@@ -23,19 +23,12 @@
     "type": "module"
   },
   "commands": {
-    "01-toggle-z-macro": {
+    "toggle-favorites": {
       "suggested_key": {
-        "default": "Alt+Z",
-        "mac": "Alt+Z"
+        "default": "Alt+Q",
+        "mac": "Alt+Q"
       },
-      "description": "다음 글 자동 넘김 매크로 시작/중지"
-    },
-    "02-toggle-x-macro": {
-      "suggested_key": {
-        "default": "Alt+X",
-        "mac": "Alt+X"
-      },
-      "description": "이전 글 자동 넘김 매크로 시작/중지"
+      "description": "즐겨찾기 창 열기/닫기"
     }
   },
   "content_scripts": [
@@ -51,27 +44,12 @@
         "content-script.css"
       ],
       "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "exclude_matches": [
-        "*://*.dcinside.com/*"
-      ],
-      "js": [
-        "global-shortcuts.js"
-      ],
-      "run_at": "document_start"
     }
-  ],
-  "host_permissions": [
-    "<all_urls>"
   ],
   "permissions": [
     "storage",
     "commands",
-    "tabs",
-    "scripting"
+    "scripting",
+    "activeTab"
   ]
 }

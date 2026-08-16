@@ -14,15 +14,20 @@ function manifestPlugin(isProduction: boolean): PluginOption {
       // 1. 기본 manifest.json 파일 읽기
       const manifestPath = path.resolve(__dirname, 'manifest.json');
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      const shadowUiStyles = {
+        resources: ['content-script.css'],
+        matches: ['<all_urls>'],
+      };
 
       if (isProduction) {
-        // 2. 프로덕션 모드일 때: web_accessible_resources 제거
-        console.log('Production mode: Removing web_accessible_resources from manifest.');
-        delete manifest.web_accessible_resources;
+        // Shadow DOM 내부에서 확장 UI 스타일을 로드하기 위한 최소 리소스만 공개합니다.
+        console.log('Production mode: Exposing only the Shadow DOM UI stylesheet.');
+        manifest.web_accessible_resources = [shadowUiStyles];
       } else {
-        // 3. 개발 모드일 때: web_accessible_resources 추가
+        // 3. 개발 모드일 때: Shadow DOM 스타일과 디버깅 리소스 추가
         console.log('Development mode: Adding web_accessible_resources to manifest.');
         manifest.web_accessible_resources = [
+          shadowUiStyles,
           {
             resources: ["*.js.map"],
             matches: ["<all_urls>"]
@@ -46,7 +51,7 @@ function classicContentScriptGuardPlugin(): PluginOption {
   return {
     name: 'guard-classic-content-script',
     generateBundle(_options, bundle) {
-      for (const entryName of ['content-script', 'global-shortcuts']) {
+      for (const entryName of ['content-script']) {
         const contentScript = Object.values(bundle).find(
           (output) => output.type === 'chunk' && output.isEntry && output.name === entryName
         );
@@ -93,7 +98,6 @@ export default defineConfig(({ command, mode }) => {
           popup: path.resolve(__dirname, 'popup.html'),
           background: path.resolve(__dirname, 'src/background/background.ts'),
           'content-script': path.resolve(__dirname, 'src/content-script/main.ts'),
-          'global-shortcuts': path.resolve(__dirname, 'src/content-script/global-shortcuts.ts'),
         },
         output: {
           entryFileNames: `[name].js`,

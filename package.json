@@ -1,13 +1,14 @@
 {
   "name": "dcshortcut-ts",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "version:sync": "node scripts/sync-version.mjs",
     "build": "node scripts/sync-version.mjs && vue-tsc --noEmit && vite build",
     "build:dev": "node scripts/sync-version.mjs && vue-tsc --noEmit && vite build --mode development",
+    "verify:active-tab": "node scripts/verify-active-tab-background.mjs",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit"
   },

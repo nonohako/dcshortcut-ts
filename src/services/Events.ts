@@ -91,6 +91,7 @@ interface EventsModuleType {
   handleWindowFocus(event?: FocusEvent): void;
   getMacroStateFromBackground(): Promise<MacroState>;
   getCurrentTabId(): Promise<number | null>;
+  toggleMacro(macroType: 'Z' | 'X'): Promise<void>;
   handleStopMacroCommand(macroType: 'Z' | 'X', reason?: string | null): void;
   triggerMacroNavigation(): Promise<void>;
   setPageNavigationMode(mode: PageNavigationMode): void;
@@ -285,6 +286,18 @@ const Events: EventsModuleType = {
     this.ui?.showAlert(alertMessage);
   },
 
+  async toggleMacro(macroType: 'Z' | 'X'): Promise<void> {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'toggleMacro', type: macroType });
+      if (response?.success !== true) {
+        this.ui?.showAlert(response?.error || '매크로 상태를 변경하지 못했습니다.');
+      }
+    } catch (error) {
+      console.error(`${macroType} 매크로 토글 요청 실패:`, error);
+      this.ui?.showAlert('매크로 상태를 변경하지 못했습니다.');
+    }
+  },
+
   async triggerMacroNavigation(): Promise<void> {
     if (!this.storage || !this.ui || !this.posts || !this.settingsStore) return;
 
@@ -298,7 +311,7 @@ const Events: EventsModuleType = {
       const isRunning = type === 'Z' ? macroState.zRunning : macroState.xRunning;
       const targetTabId = type === 'Z' ? macroState.zTabId : macroState.xTabId;
       const isUiEnabled =
-        type === 'Z' ? this.settingsStore!.macroZEnabled : this.settingsStore!.macroXEnabled;
+        this.settingsStore!.shortcutEnabled[`shortcutMacro${type}Enabled`];
       const navigateFn = type === 'Z' ? this.navigatePrevPost : this.navigateNextPost;
       const alertText = type === 'Z' ? '자동 다음 글' : '자동 이전 글';
 
@@ -312,7 +325,7 @@ const Events: EventsModuleType = {
           const latestState = await this.getMacroStateFromBackground();
           const latestTabId = await this.getCurrentTabId();
           const latestUiEnabled =
-            type === 'Z' ? this.settingsStore!.macroZEnabled : this.settingsStore!.macroXEnabled;
+            this.settingsStore!.shortcutEnabled[`shortcutMacro${type}Enabled`];
           const latestIsRunning = type === 'Z' ? latestState.zRunning : latestState.xRunning;
           if (latestIsRunning && latestTabId === targetTabId && latestUiEnabled) {
             await navigateFn.call(this);
@@ -1447,6 +1460,12 @@ const Events: EventsModuleType = {
       case 'X':
         await this.navigateNextPost();
         break;
+      case 'MacroZ':
+        await this.toggleMacro('Z');
+        break;
+      case 'MacroX':
+        await this.toggleMacro('X');
+        break;
       case 'PrevProfile':
         await this.cycleProfile('prev');
         break;
@@ -1458,11 +1477,6 @@ const Events: EventsModuleType = {
         break;
       case 'SubmitImagePost':
         document.querySelector<HTMLButtonElement>('button.btn_svc.write[type="image"]')?.click();
-        break;
-      case 'ToggleModal':
-        this.uiStore?.activeModal === 'shortcuts'
-          ? this.uiStore.closeModal()
-          : this.uiStore?.toggleFavorites();
         break;
     }
   },
@@ -1634,7 +1648,7 @@ const Events: EventsModuleType = {
       const state = await this.getMacroStateFromBackground();
       const tabId = await this.getCurrentTabId();
       const uiEnabled =
-        macroType === 'Z' ? this.settingsStore!.macroZEnabled : this.settingsStore!.macroXEnabled;
+        this.settingsStore!.shortcutEnabled[`shortcutMacro${macroType}Enabled`];
       const shouldRun =
         (macroType === 'Z' && state.zRunning && tabId === state.zTabId && uiEnabled) ||
         (macroType === 'X' && state.xRunning && tabId === state.xTabId && uiEnabled);
