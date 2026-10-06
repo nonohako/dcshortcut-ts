@@ -104,6 +104,22 @@
           </div>
         </div>
 
+        <div class="number-shortcut-toolbar">
+          <label>
+            번호 순서
+            <select v-model="numberShortcutStart" :disabled="assigningNumberShortcuts" aria-label="즐겨찾기 단축키 번호 순서">
+              <option value="0">Alt+0 → Alt+9</option>
+              <option value="1">Alt+1 → Alt+0</option>
+            </select>
+          </label>
+          <button
+            class="small-button"
+            :disabled="isSearching || activeFavorites.length === 0 || assigningNumberShortcuts || draggedFavoriteIds.length > 0"
+            @click="assignNumberShortcuts"
+          >번호 일괄 지정</button>
+          <span>{{ isSearching ? '검색을 지우면 현재 폴더에 적용할 수 있습니다.' : '현재 폴더 위에서 10개까지 지정 · 이후 숫자 단축키 해제' }}</span>
+        </div>
+
         <div v-if="selectionMode" class="selection-toolbar">
           <label class="select-all-label">
             <input
@@ -272,7 +288,8 @@ import Storage from '@/services/Storage';
 import UI from '@/services/UI';
 import { getShortcutComboFromEvent } from '@/services/Shortcut';
 import { FAVORITES_LAYOUT_KEY } from '@/services/Global';
-import { useFavoritesStore } from '@/stores/favoritesStore';
+import { FAVORITE_NUMBER_SHORTCUTS, getFavoriteNumberSequence, useFavoritesStore } from '@/stores/favoritesStore';
+import type { FavoriteNumberStart } from '@/stores/favoritesStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUiStore } from '@/stores/uiStore';
 import type {
@@ -293,6 +310,8 @@ const searchQuery = ref('');
 const selectionMode = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const batchTargetFolderId = ref('');
+const numberShortcutStart = ref<FavoriteNumberStart>('0');
+const assigningNumberShortcuts = ref(false);
 const draggedFavoriteIds = ref<string[]>([]);
 const draggedSourceFolderId = ref<string | null>(null);
 const draggedFolderId = ref<string | null>(null);
@@ -578,7 +597,7 @@ const handleViewportResize = (): void => {
   });
 };
 
-const shortcutOptions: FavoriteShortcut[] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+const shortcutOptions = FAVORITE_NUMBER_SHORTCUTS;
 const NUMBER_SHORTCUT_PATTERN = /^[0-9]$/;
 const ALT_NUMBER_SHORTCUT_PATTERN = /^Alt\+([0-9])$/;
 const CUSTOM_SHORTCUT_VALUE = '__custom__';
@@ -917,6 +936,32 @@ const moveSingleFavorite = async (
     );
   } catch (error) {
     UI.showAlert(error instanceof Error ? error.message : '즐겨찾기를 이동하지 못했습니다.');
+  }
+};
+
+const assignNumberShortcuts = async (): Promise<void> => {
+  if (isSearching.value || assigningNumberShortcuts.value || draggedFavoriteIds.value.length > 0) return;
+  const count = Math.min(activeFavorites.value.length, shortcutOptions.length);
+  if (count === 0) return;
+  const start = numberShortcutStart.value;
+  const folderId = activeFolderId.value;
+  for (const shortcut of getFavoriteNumberSequence(start).slice(0, count)) {
+    const conflictMessage = getConfiguredShortcutConflictMessage(shortcut);
+    if (conflictMessage) {
+      UI.showAlert(conflictMessage);
+      return;
+    }
+  }
+  assigningNumberShortcuts.value = true;
+  customShortcutItemId.value = null;
+  try {
+    await performUndoableChange(`${count}개 즐겨찾기에 번호를 순서대로 지정했습니다.`, () =>
+      favoritesStore.assignSequentialShortcuts(start, folderId)
+    );
+  } catch (error) {
+    UI.showAlert(error instanceof Error ? error.message : '단축키 번호를 지정하지 못했습니다.');
+  } finally {
+    assigningNumberShortcuts.value = false;
   }
 };
 
@@ -1269,6 +1314,10 @@ button { color: inherit; }
 .folder-title-wrap h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
 .folder-title-wrap span { color: var(--dc-color-text-muted); font-size: 12.5px; white-space: nowrap; }
 .toolbar-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.number-shortcut-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+.number-shortcut-toolbar label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.number-shortcut-toolbar select { padding: 5px 6px; border: 1px solid var(--dc-color-border); border-radius: 6px; background: var(--dc-color-surface-muted); color: var(--dc-color-text-primary); font: inherit; }
+.number-shortcut-toolbar > span { color: var(--dc-color-text-secondary); }
 
 .small-button, .icon-button, .footer-button {
   border: 1px solid var(--dc-color-border);

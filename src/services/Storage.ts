@@ -1,6 +1,13 @@
-import type { DcconAliasMap, FavoritesData, PageNavigationMode, ThemeMode } from '@/types';
+import type {
+  DcconAliasMap,
+  DcconAliasProfiles,
+  FavoritesData,
+  PageNavigationMode,
+  ThemeMode,
+} from '@/types';
 import {
   DCCON_ALIAS_MAP_KEY,
+  DCCON_ALIAS_PROFILES_KEY,
   DCCON_ALIAS_ENABLED_KEY,
   FAVORITE_GALLERIES_KEY,
   PAGE_NAVIGATION_MODE_KEY,
@@ -20,6 +27,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function getStoredDcconMediaIdentity(imageUrl: string | undefined): string {
+  if (imageUrl) {
+    try {
+      const url = new URL(imageUrl, 'https://gall.dcinside.com');
+      const mediaNo = url.pathname.endsWith('/dccon.php') ? url.searchParams.get('no') : '';
+      if (mediaNo) return `dccon:${mediaNo}`;
+      return `image:${url.href}`;
+    } catch {
+      return `image:${imageUrl.trim()}`;
+    }
+  }
+  return '';
+}
+
+function areStoredDcconTargetsSame(
+  left: DcconAliasMap[string][number],
+  right: DcconAliasMap[string][number]
+): boolean {
+  if (left.packageIdx === right.packageIdx && left.detailIdx === right.detailIdx) return true;
+
+  const leftMediaIdentity = getStoredDcconMediaIdentity(left.imageUrl);
+  const rightMediaIdentity = getStoredDcconMediaIdentity(right.imageUrl);
+  return Boolean(leftMediaIdentity && leftMediaIdentity === rightMediaIdentity);
+}
+
 function sanitizeDcconAliasMap(rawValue: unknown): DcconAliasMap {
   if (!isRecord(rawValue)) return {};
 
@@ -30,7 +62,7 @@ function sanitizeDcconAliasMap(rawValue: unknown): DcconAliasMap {
     const normalizedAliasKey = aliasKey.trim().toLocaleLowerCase();
     if (!normalizedAliasKey) continue;
 
-    const uniqueTargets = new Map<string, DcconAliasMap[string][number]>();
+    const uniqueTargets: DcconAliasMap[string] = [];
 
     value.forEach((target) => {
       if (!isRecord(target)) return;
@@ -41,26 +73,68 @@ function sanitizeDcconAliasMap(rawValue: unknown): DcconAliasMap {
       if (!alias || !packageIdx || !detailIdx) return;
 
       const updatedAt = Number(target.updatedAt);
+      const packageTitle = typeof target.packageTitle === 'string' ? target.packageTitle : undefined;
       const title = typeof target.title === 'string' ? target.title : undefined;
       const imageUrl = typeof target.imageUrl === 'string' ? target.imageUrl : undefined;
-      const dedupeKey = `${packageIdx}:${detailIdx}`;
-
-      uniqueTargets.set(dedupeKey, {
+      const thumbnailUrl =
+        typeof target.thumbnailUrl === 'string' ? target.thumbnailUrl : undefined;
+      const nextTarget: DcconAliasMap[string][number] = {
         alias,
         packageIdx,
         detailIdx,
+        packageTitle,
         title,
         imageUrl,
+        thumbnailUrl,
         updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
-      });
+      };
+      const existingIndex = uniqueTargets.findIndex((target) =>
+        areStoredDcconTargetsSame(target, nextTarget)
+      );
+      if (existingIndex < 0) {
+        uniqueTargets.push(nextTarget);
+      } else if (nextTarget.updatedAt >= uniqueTargets[existingIndex].updatedAt) {
+        uniqueTargets[existingIndex] = nextTarget;
+      }
     });
 
-    const dedupedTargets = Array.from(uniqueTargets.values());
-    if (dedupedTargets.length > 0) {
-      sanitized[normalizedAliasKey] = dedupedTargets;
+    if (uniqueTargets.length > 0) {
+      sanitized[normalizedAliasKey] = uniqueTargets;
     }
   }
 
+  return sanitized;
+}
+
+function mergeDcconAliasMaps(...aliasMaps: DcconAliasMap[]): DcconAliasMap {
+  const merged: DcconAliasMap = {};
+  aliasMaps.forEach((aliasMap) => {
+    Object.entries(aliasMap).forEach(([aliasKey, targets]) => {
+      merged[aliasKey] = [...(merged[aliasKey] ?? []), ...targets];
+    });
+  });
+  return sanitizeDcconAliasMap(merged);
+}
+
+function sanitizeDcconAliasProfiles(rawValue: unknown): DcconAliasProfiles {
+  if (!isRecord(rawValue)) return {};
+
+  const sanitized: DcconAliasProfiles = {};
+  Object.entries(rawValue).forEach(([profileKey, rawProfile]) => {
+    const normalizedProfileKey = profileKey.trim().toLocaleLowerCase();
+    if (!normalizedProfileKey || !isRecord(rawProfile)) return;
+
+    const label = typeof rawProfile.label === 'string' ? rawProfile.label.trim() : '';
+    const aliasMap = sanitizeDcconAliasMap(rawProfile.aliasMap);
+    const updatedAt = Number(rawProfile.updatedAt);
+    if (!label || Object.keys(aliasMap).length === 0) return;
+
+    sanitized[normalizedProfileKey] = {
+      label,
+      aliasMap,
+      updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
+    };
+  });
   return sanitized;
 }
 
@@ -440,9 +514,21 @@ const Storage = {
 
   // --- 디시콘 별칭 맵 ---
   async getDcconAliasMap(): Promise<DcconAliasMap> {
-    const defaultValue: DcconAliasMap = {};
-    const value = await this.getData<unknown>(DCCON_ALIAS_MAP_KEY, defaultValue);
-    return sanitizeDcconAliasMap(value);
+    const [rawAliasMap, rawProfiles] = await Promise.all([
+      this.getData<unknown>(DCCON_ALIAS_MAP_KEY, {}),
+      this.getData<unknown>(DCCON_ALIAS_PROFILES_KEY, {}),
+    ]);
+    const aliasMap = sanitizeDcconAliasMap(rawAliasMap);
+    const profiles = sanitizeDcconAliasProfiles(rawProfiles);
+    if (Object.keys(profiles).length === 0) return aliasMap;
+
+    const mergedAliasMap = mergeDcconAliasMaps(
+      aliasMap,
+      ...Object.values(profiles).map((profile) => profile.aliasMap)
+    );
+    await this.setData(DCCON_ALIAS_MAP_KEY, mergedAliasMap);
+    await this.removeData(DCCON_ALIAS_PROFILES_KEY);
+    return mergedAliasMap;
   },
 
   async saveDcconAliasMap(aliasMap: DcconAliasMap): Promise<void> {

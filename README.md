@@ -3,7 +3,7 @@
 디시인사이드를 키보드만으로 이용하는 것을 지향하는 프로젝트입니다.
 자주 쓰는 동작을 단축키로 실행하고, 갤러리·웹페이지 즐겨찾기/게시글 탐색 단축키/디시콘 즐겨찾기 기능을 지원합니다.
 
-![Version](https://img.shields.io/badge/version-0.4.3-2f855a)
+![Version](https://img.shields.io/badge/version-0.4.5-2f855a)
 ![License](https://img.shields.io/badge/license-MIT-1f6feb)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![Vue](https://img.shields.io/badge/Vue-3.x-42b883)
@@ -17,9 +17,10 @@
 - 모든 폴더 통합 검색, 한글 실시간 검색 및 초성 검색
 - 즐겨찾기 여러 항목 일괄 이동/삭제
 - `Alt + 0~9` 또는 사용자 지정 조합을 즐겨찾기 단축키로 지정
+- 현재 폴더 목록 순서대로 `Alt+0 → Alt+9` 또는 `Alt+1 → Alt+0` 번호 일괄 지정 및 되돌리기
 - 크기를 조절할 수 있는 즐겨찾기 관리 창
 - 다음 글/이전 글 이동 단축키
-- 댓글 입력창에서 `@디시콘 이름`으로 디시콘 빠른 사용
+- 로그인 여부와 관계없이 공용으로 저장한 별칭을 댓글과 글쓰기 본문에서 `@별칭`으로 빠르게 사용하고, 설정에서 이름순·등록순 정렬 지원
 - 갤러리 자동 새로고침 기능 지원
 - 시스템 설정을 따르는 라이트/다크 테마
 

@@ -30,6 +30,13 @@ const DEFAULT_FOLDER_NAME = '기본';
 const NUMBER_SHORTCUT_PATTERN = /^[0-9]$/;
 const ALT_NUMBER_SHORTCUT_PATTERN = /^Alt\+([0-9])$/;
 
+export const FAVORITE_NUMBER_SHORTCUTS: FavoriteShortcut[] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+export type FavoriteNumberStart = '0' | '1';
+export const getFavoriteNumberSequence = (start: FavoriteNumberStart): FavoriteShortcut[] =>
+  start === '1'
+    ? [...FAVORITE_NUMBER_SHORTCUTS.slice(1), FAVORITE_NUMBER_SHORTCUTS[0]]
+    : [...FAVORITE_NUMBER_SHORTCUTS];
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -493,6 +500,27 @@ export const useFavoritesStore = defineStore('favorites', () => {
     await saveProfiles();
   }
 
+  async function assignSequentialShortcuts(
+    start: FavoriteNumberStart,
+    folderId = activeFolderId.value
+  ): Promise<void> {
+    await ensureLoaded();
+    const folder = getFolder(folderId);
+    const sequence = getFavoriteNumberSequence(start);
+    let changed = false;
+    folder.favorites.forEach((item, index) => {
+      // 10개 이후는 숫자 단축키만 해제하고 Custom 조합은 보존합니다.
+      const shortcut = index < sequence.length
+        ? sequence[index]
+        : item.shortcut && NUMBER_SHORTCUT_PATTERN.test(item.shortcut) ? null : item.shortcut;
+      if (item.shortcut !== shortcut) {
+        item.shortcut = shortcut;
+        changed = true;
+      }
+    });
+    if (changed) await saveProfiles();
+  }
+
   async function addFavorite(
     galleryData: FavoriteGalleryInfo,
     options: { folderId?: string; shortcut?: FavoriteShortcut | null } = {}
@@ -652,6 +680,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
     moveFavorites,
     setFavoriteOrder,
     assignShortcut,
+    assignSequentialShortcuts,
     getFavoriteByShortcut,
     clearAndSetFavorites,
     getStateSnapshot,

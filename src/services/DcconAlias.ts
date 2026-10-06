@@ -7,14 +7,17 @@ interface AliasTokenContext {
   query: string;
   start: number;
   end: number;
+  range?: Range;
 }
+
+type AliasInputElement = HTMLTextAreaElement | HTMLDivElement;
 
 interface AliasPopupTarget extends Omit<DcconAliasTarget, 'updatedAt'> {
   aliases: string[];
 }
 
 interface AliasSuggestionState {
-  textarea: HTMLTextAreaElement;
+  input: AliasInputElement;
   token: AliasTokenContext;
   matches: AliasPopupTarget[];
   selectedIndex: number;
@@ -23,8 +26,37 @@ interface AliasSuggestionState {
 interface AliasEditableTargetInfo {
   packageIdx: string;
   detailIdx: string;
+  packageTitle?: string;
   title?: string;
   imageUrl?: string;
+  thumbnailUrl?: string;
+}
+
+interface DcconListPackage {
+  packageIdx: string;
+  title?: string;
+  details: DcconListDetail[];
+}
+
+interface DcconListDetail {
+  packageIdx: string;
+  detailIdx: string;
+  title?: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  imageUrls: string[];
+}
+
+interface DcconListPage {
+  packages: DcconListPackage[];
+  maxPage: number;
+}
+
+interface RuntimeDcconIndex {
+  byMediaIdentity: Map<string, AliasEditableTargetInfo>;
+  byTargetId: Map<string, AliasEditableTargetInfo>;
+  byPackageAndDetailTitle: Map<string, AliasEditableTargetInfo>;
+  byPackageTitleAndDetailTitle: Map<string, AliasEditableTargetInfo>;
 }
 
 const SUGGESTION_LIMIT = 120;
@@ -52,6 +84,7 @@ let popupPreviewElement: HTMLDivElement | null = null;
 let activeSuggestionState: AliasSuggestionState | null = null;
 let repositionRafId: number | null = null;
 let dcconAliasEnabled = true;
+let runtimeDcconIndexPromise: Promise<RuntimeDcconIndex | null> | null = null;
 
 const scrollRepositionHandler = (): void => {
   if (!activeSuggestionState) return;
@@ -74,15 +107,268 @@ const storageChangeListener = (
       hideSuggestions();
       return;
     }
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLTextAreaElement && isCommentTextarea(activeElement)) {
-      updateSuggestionsForTextarea(activeElement);
-    }
+    const activeInput = getAliasInput(document.activeElement);
+    if (activeInput) updateSuggestionsForInput(activeInput);
   }
 };
 
 function safeTrim(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeDcconMediaUrl(rawUrl: string | undefined): string {
+  if (!rawUrl) return '';
+  try {
+    const url = new URL(rawUrl, window.location.href);
+    url.hash = '';
+    return url.href;
+  } catch {
+    return rawUrl.trim();
+  }
+}
+
+function getDcconMediaIdentity(rawUrl: string | undefined): string {
+  const normalizedUrl = normalizeDcconMediaUrl(rawUrl);
+  if (!normalizedUrl) return '';
+
+  try {
+    const url = new URL(normalizedUrl);
+    const mediaNo = url.pathname.endsWith('/dccon.php') ? url.searchParams.get('no') : '';
+    return mediaNo ? `dccon:${mediaNo}` : normalizedUrl;
+  } catch {
+    return normalizedUrl;
+  }
+}
+
+function getDcconTargetId(packageIdx: string, detailIdx: string): string {
+  return `${packageIdx.trim()}:${detailIdx.trim()}`;
+}
+
+function getDcconTitleIdentity(value: string | undefined): string {
+  return safeTrim(value).toLocaleLowerCase();
+}
+
+function getPackageAndDetailTitleIdentity(
+  packageIdentity: string | undefined,
+  detailTitle: string | undefined
+): string {
+  const normalizedPackage = getDcconTitleIdentity(packageIdentity);
+  const normalizedDetail = getDcconTitleIdentity(detailTitle);
+  return normalizedPackage && normalizedDetail ? `${normalizedPackage}\u0000${normalizedDetail}` : '';
+}
+
+function areDcconTargetsSame(
+  left: AliasEditableTargetInfo,
+  right: AliasEditableTargetInfo
+): boolean {
+  if (
+    getDcconTargetId(left.packageIdx, left.detailIdx) ===
+    getDcconTargetId(right.packageIdx, right.detailIdx)
+  ) {
+    return true;
+  }
+
+  const leftMediaIdentity = getDcconMediaIdentity(left.imageUrl);
+  const rightMediaIdentity = getDcconMediaIdentity(right.imageUrl);
+  return Boolean(leftMediaIdentity && leftMediaIdentity === rightMediaIdentity);
+}
+
+function normalizeDcconIndexValue(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
+}
+
+function parseDcconListPage(value: unknown): DcconListPage | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const payload = value as Record<string, unknown>;
+  if (!Array.isArray(payload.list)) return null;
+
+  const packages: DcconListPackage[] = [];
+  payload.list.forEach((rawPackage) => {
+    if (!rawPackage || typeof rawPackage !== 'object') return;
+
+    const packagePayload = rawPackage as Record<string, unknown>;
+    const packageIdx = normalizeDcconIndexValue(packagePayload.package_idx);
+    if (!packageIdx || !Array.isArray(packagePayload.detail)) return;
+
+    const details: DcconListDetail[] = [];
+    packagePayload.detail.forEach((rawDetail) => {
+      if (!rawDetail || typeof rawDetail !== 'object') return;
+
+      const detailPayload = rawDetail as Record<string, unknown>;
+      const detailIdx = normalizeDcconIndexValue(detailPayload.detail_idx);
+      if (!detailIdx) return;
+
+      const detailPackageIdx = normalizeDcconIndexValue(detailPayload.package_idx) || packageIdx;
+      const imageUrl = normalizeDcconMediaUrl(
+        safeTrim(detailPayload.video_src) || safeTrim(detailPayload.list_img)
+      );
+      const thumbnailUrl = normalizeDcconMediaUrl(
+        safeTrim(detailPayload.list_img) || safeTrim(detailPayload.video_src)
+      );
+      const imageUrls = [imageUrl, thumbnailUrl]
+        .map(normalizeDcconMediaUrl)
+        .filter(Boolean);
+
+      details.push({
+        packageIdx: detailPackageIdx,
+        detailIdx,
+        title: safeTrim(detailPayload.title) || undefined,
+        imageUrl: imageUrl || undefined,
+        thumbnailUrl: thumbnailUrl || undefined,
+        imageUrls: Array.from(new Set(imageUrls)),
+      });
+    });
+
+    packages.push({
+      packageIdx,
+      title: safeTrim(packagePayload.title) || undefined,
+      details,
+    });
+  });
+
+  const rawMaxPage = Number(payload.max_page);
+  return {
+    packages,
+    maxPage: Number.isInteger(rawMaxPage) && rawMaxPage >= 0 ? rawMaxPage : 0,
+  };
+}
+
+async function fetchDcconListPage(page: number): Promise<DcconListPage | null> {
+  const response = await fetch(new URL('/dccon/lists', window.location.origin), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: new URLSearchParams({
+      target: 'icon',
+      page: String(page),
+    }).toString(),
+  });
+  if (!response.ok) return null;
+
+  const responseText = await response.text();
+  if (!responseText.trim().startsWith('{')) return null;
+
+  try {
+    return parseDcconListPage(JSON.parse(responseText));
+  } catch {
+    return null;
+  }
+}
+
+async function loadRuntimeDcconIndex(): Promise<RuntimeDcconIndex | null> {
+  const firstPage = await fetchDcconListPage(0);
+  if (!firstPage) return null;
+
+  const remainingPages = await Promise.all(
+    Array.from({ length: firstPage.maxPage }, (_, index) => fetchDcconListPage(index + 1))
+  );
+  const pages = [firstPage, ...remainingPages.filter((page): page is DcconListPage => Boolean(page))];
+  const byMediaIdentity = new Map<string, AliasEditableTargetInfo>();
+  const byTargetId = new Map<string, AliasEditableTargetInfo>();
+  const byPackageAndDetailTitle = new Map<string, AliasEditableTargetInfo>();
+  const byPackageTitleAndDetailTitle = new Map<string, AliasEditableTargetInfo>();
+
+  pages.forEach((page) => {
+    page.packages.forEach((dcconPackage) => {
+      dcconPackage.details.forEach((detail) => {
+        const target: AliasEditableTargetInfo = {
+          packageIdx: detail.packageIdx,
+          detailIdx: detail.detailIdx,
+          packageTitle: dcconPackage.title,
+          title: detail.title || dcconPackage.title,
+          imageUrl: detail.imageUrl,
+          thumbnailUrl: detail.thumbnailUrl,
+        };
+        byTargetId.set(getDcconTargetId(target.packageIdx, target.detailIdx), target);
+        const packageIdAndTitle = getPackageAndDetailTitleIdentity(
+          target.packageIdx,
+          target.title
+        );
+        if (packageIdAndTitle && !byPackageAndDetailTitle.has(packageIdAndTitle)) {
+          byPackageAndDetailTitle.set(packageIdAndTitle, target);
+        }
+        const packageTitleAndDetailTitle = getPackageAndDetailTitleIdentity(
+          target.packageTitle,
+          target.title
+        );
+        if (
+          packageTitleAndDetailTitle &&
+          !byPackageTitleAndDetailTitle.has(packageTitleAndDetailTitle)
+        ) {
+          byPackageTitleAndDetailTitle.set(packageTitleAndDetailTitle, target);
+        }
+        detail.imageUrls.forEach((imageUrl) => {
+          const mediaIdentity = getDcconMediaIdentity(imageUrl);
+          if (mediaIdentity && !byMediaIdentity.has(mediaIdentity)) {
+            byMediaIdentity.set(mediaIdentity, target);
+          }
+        });
+      });
+    });
+  });
+
+  return {
+    byMediaIdentity,
+    byTargetId,
+    byPackageAndDetailTitle,
+    byPackageTitleAndDetailTitle,
+  };
+}
+
+function getRuntimeDcconIndex(): Promise<RuntimeDcconIndex | null> {
+  if (runtimeDcconIndexPromise) return runtimeDcconIndexPromise;
+
+  runtimeDcconIndexPromise = loadRuntimeDcconIndex().catch((error) => {
+    console.warn('[DcconAlias] 현재 계정 디시콘 목록 조회 실패:', error);
+    runtimeDcconIndexPromise = null;
+    return null;
+  });
+  return runtimeDcconIndexPromise;
+}
+
+async function resolveCurrentDcconTarget(
+  selectedTarget: AliasPopupTarget
+): Promise<AliasPopupTarget> {
+  const mediaIdentity = getDcconMediaIdentity(selectedTarget.imageUrl);
+  const runtimeIndex = await getRuntimeDcconIndex();
+  const resolvedTarget =
+    (mediaIdentity ? runtimeIndex?.byMediaIdentity.get(mediaIdentity) : undefined) ??
+    runtimeIndex?.byTargetId.get(
+      getDcconTargetId(selectedTarget.packageIdx, selectedTarget.detailIdx)
+    ) ??
+    runtimeIndex?.byPackageAndDetailTitle.get(
+      getPackageAndDetailTitleIdentity(selectedTarget.packageIdx, selectedTarget.title)
+    ) ??
+    runtimeIndex?.byPackageTitleAndDetailTitle.get(
+      getPackageAndDetailTitleIdentity(selectedTarget.packageTitle, selectedTarget.title)
+    );
+  if (!resolvedTarget) return selectedTarget;
+
+  const currentTarget: AliasPopupTarget = {
+    ...selectedTarget,
+    packageIdx: resolvedTarget.packageIdx,
+    detailIdx: resolvedTarget.detailIdx,
+    packageTitle: resolvedTarget.packageTitle || selectedTarget.packageTitle,
+    title: resolvedTarget.title || selectedTarget.title,
+    imageUrl: resolvedTarget.imageUrl || selectedTarget.imageUrl,
+    thumbnailUrl: resolvedTarget.thumbnailUrl || selectedTarget.thumbnailUrl,
+  };
+  if (
+    selectedTarget.packageIdx !== currentTarget.packageIdx ||
+    selectedTarget.detailIdx !== currentTarget.detailIdx ||
+    selectedTarget.packageTitle !== currentTarget.packageTitle ||
+    selectedTarget.imageUrl !== currentTarget.imageUrl ||
+    selectedTarget.thumbnailUrl !== currentTarget.thumbnailUrl
+  ) {
+    void refreshStoredDcconTarget(selectedTarget, currentTarget);
+  }
+  return currentTarget;
 }
 
 function normalizeAliasKey(alias: string): string {
@@ -145,29 +431,28 @@ function comparePopupTargets(a: AliasPopupTarget, b: AliasPopupTarget): number {
   return a.detailIdx.localeCompare(b.detailIdx, 'en', { numeric: true });
 }
 
-function aliasIdentity(target: AliasPopupTarget): string {
-  return `${target.packageIdx}:${target.detailIdx}`;
-}
-
 function rebuildGroupedAliases(): void {
   interface AliasGroupDraft {
     packageIdx: string;
     detailIdx: string;
+    packageTitle?: string;
     title?: string;
     imageUrl?: string;
+    thumbnailUrl?: string;
     aliasEntries: Array<{ alias: string; updatedAt: number }>;
   }
 
-  const groups = new Map<string, AliasGroupDraft>();
+  const groups: AliasGroupDraft[] = [];
 
   Object.values(aliasMap).forEach((targets) => {
     targets.forEach((target) => {
-      const groupKey = `${target.packageIdx}:${target.detailIdx}`;
-      const draft = groups.get(groupKey) ?? {
+      const draft = groups.find((group) => areDcconTargetsSame(group, target)) ?? {
         packageIdx: target.packageIdx,
         detailIdx: target.detailIdx,
+        packageTitle: target.packageTitle,
         title: target.title,
         imageUrl: target.imageUrl,
+        thumbnailUrl: target.thumbnailUrl,
         aliasEntries: [],
       };
 
@@ -176,9 +461,11 @@ function rebuildGroupedAliases(): void {
         updatedAt: Number.isFinite(target.updatedAt) ? target.updatedAt : Date.now(),
       });
       if (!draft.title && target.title) draft.title = target.title;
+      if (!draft.packageTitle && target.packageTitle) draft.packageTitle = target.packageTitle;
       if (!draft.imageUrl && target.imageUrl) draft.imageUrl = target.imageUrl;
+      if (!draft.thumbnailUrl && target.thumbnailUrl) draft.thumbnailUrl = target.thumbnailUrl;
 
-      groups.set(groupKey, draft);
+      if (!groups.includes(draft)) groups.push(draft);
     });
   });
 
@@ -205,8 +492,10 @@ function rebuildGroupedAliases(): void {
       aliases,
       packageIdx: draft.packageIdx,
       detailIdx: draft.detailIdx,
+      packageTitle: draft.packageTitle,
       title: draft.title,
       imageUrl: draft.imageUrl,
+      thumbnailUrl: draft.thumbnailUrl,
     });
   });
 
@@ -217,7 +506,7 @@ async function reloadAliasMap(): Promise<void> {
   aliasMap = await Storage.getDcconAliasMap();
   rebuildGroupedAliases();
   if (!activeSuggestionState || !dcconAliasEnabled) return;
-  updateSuggestionsForTextarea(activeSuggestionState.textarea);
+  updateSuggestionsForInput(activeSuggestionState.input);
 }
 
 async function reloadAliasEnabledState(): Promise<void> {
@@ -226,10 +515,8 @@ async function reloadAliasEnabledState(): Promise<void> {
     hideSuggestions();
     return;
   }
-  const activeElement = document.activeElement;
-  if (activeElement instanceof HTMLTextAreaElement && isCommentTextarea(activeElement)) {
-    updateSuggestionsForTextarea(activeElement);
-  }
+  const activeInput = getAliasInput(document.activeElement);
+  if (activeInput) updateSuggestionsForInput(activeInput);
 }
 
 async function persistAliasMap(): Promise<void> {
@@ -237,16 +524,66 @@ async function persistAliasMap(): Promise<void> {
   rebuildGroupedAliases();
 }
 
+async function refreshStoredDcconTarget(
+  previousTarget: AliasEditableTargetInfo,
+  currentTarget: AliasEditableTargetInfo
+): Promise<void> {
+  let changed = false;
+  Object.keys(aliasMap).forEach((aliasKey) => {
+    aliasMap[aliasKey] = aliasMap[aliasKey].map((target) => {
+      if (!areDcconTargetsSame(target, previousTarget)) return target;
+
+      changed = true;
+      return {
+        ...target,
+        packageIdx: currentTarget.packageIdx,
+        detailIdx: currentTarget.detailIdx,
+        packageTitle: currentTarget.packageTitle || target.packageTitle,
+        title: currentTarget.title || target.title,
+        imageUrl: currentTarget.imageUrl || target.imageUrl,
+        thumbnailUrl: currentTarget.thumbnailUrl || target.thumbnailUrl,
+      };
+    });
+  });
+  if (changed) await persistAliasMap();
+}
+
 function isCommentTextarea(element: Element | null): element is HTMLTextAreaElement {
+  if (
+    window.location.pathname.includes('/board/write/') &&
+    element instanceof HTMLTextAreaElement &&
+    element.id === 'memo'
+  ) {
+    return false;
+  }
   return (
     element instanceof HTMLTextAreaElement &&
     element.matches('textarea[id^="memo_"], textarea[name="memo"], .cmt_write_box textarea')
   );
 }
 
-function getAliasesByTarget(packageIdx: string, detailIdx: string): string[] {
+function isWriteEditor(element: Element | null): element is HTMLDivElement {
+  return (
+    element instanceof HTMLDivElement &&
+    element.matches('.note-editable[contenteditable="true"]') &&
+    window.location.pathname.includes('/board/write/')
+  );
+}
+
+function getAliasInput(target: EventTarget | null): AliasInputElement | null {
+  if (!(target instanceof Element)) return null;
+  if (isCommentTextarea(target) || isWriteEditor(target)) return target;
+  return null;
+}
+
+function getAliasesByTarget(
+  packageIdx: string,
+  detailIdx: string,
+  imageUrl?: string
+): string[] {
+  const targetInfo = { packageIdx, detailIdx, imageUrl };
   const groupedMatch = groupedAliases.find(
-    (target) => target.packageIdx === packageIdx && target.detailIdx === detailIdx
+    (target) => areDcconTargetsSame(target, targetInfo)
   );
   if (groupedMatch) return [...groupedMatch.aliases];
 
@@ -305,9 +642,31 @@ function getMatchingAliases(query: string): AliasPopupTarget[] {
     .slice(0, SUGGESTION_LIMIT);
 }
 
-function extractAliasTokenContext(textarea: HTMLTextAreaElement): AliasTokenContext | null {
-  const caretPosition = textarea.selectionStart ?? textarea.value.length;
-  const textBeforeCaret = textarea.value.slice(0, caretPosition);
+function extractAliasTokenContext(input: AliasInputElement): AliasTokenContext | null {
+  if (isWriteEditor(input)) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return null;
+
+    const caretRange = selection.getRangeAt(0);
+    if (!input.contains(caretRange.endContainer) || !(caretRange.endContainer instanceof Text)) {
+      return null;
+    }
+
+    const caretPosition = caretRange.endOffset;
+    const textBeforeCaret = caretRange.endContainer.data.slice(0, caretPosition);
+    const tokenMatch = textBeforeCaret.match(/(?:^|\s)@([^\s@]{0,40})$/);
+    if (!tokenMatch) return null;
+
+    const query = tokenMatch[1];
+    const start = caretPosition - query.length - 1;
+    const tokenRange = document.createRange();
+    tokenRange.setStart(caretRange.endContainer, start);
+    tokenRange.setEnd(caretRange.endContainer, caretPosition);
+    return { query, start, end: caretPosition, range: tokenRange };
+  }
+
+  const caretPosition = input.selectionStart ?? input.value.length;
+  const textBeforeCaret = input.value.slice(0, caretPosition);
   const tokenMatch = textBeforeCaret.match(/(?:^|\s)@([^\s@]{0,40})$/);
   if (!tokenMatch) return null;
 
@@ -372,8 +731,9 @@ function ensurePopup(): void {
       {
         packageIdx: matchedTarget.packageIdx,
         detailIdx: matchedTarget.detailIdx,
-        title: matchedTarget.title,
-        imageUrl: matchedTarget.imageUrl,
+          title: matchedTarget.title,
+          imageUrl: matchedTarget.imageUrl,
+          thumbnailUrl: matchedTarget.thumbnailUrl,
       },
       matchedTarget.aliases
     );
@@ -435,9 +795,10 @@ function renderSuggestions(): void {
     const aliasTooltip = target.aliases.map((alias) => `@${alias}`).join(', ');
     button.setAttribute('aria-label', aliasTooltip);
 
-    if (target.imageUrl) {
+    const thumbnailUrl = target.thumbnailUrl || target.imageUrl;
+    if (thumbnailUrl) {
       const img = document.createElement('img');
-      img.src = target.imageUrl;
+      img.src = thumbnailUrl;
       img.alt = target.alias;
       img.loading = 'lazy';
       button.appendChild(img);
@@ -493,23 +854,25 @@ function schedulePopupReposition(): void {
 function repositionPopup(): void {
   if (!popupElement || !activeSuggestionState) return;
 
-  const textareaRect = activeSuggestionState.textarea.getBoundingClientRect();
-  if (textareaRect.width === 0 && textareaRect.height === 0) {
+  const inputRect = activeSuggestionState.input.getBoundingClientRect();
+  if (inputRect.width === 0 && inputRect.height === 0) {
     hideSuggestions();
     return;
   }
 
-  const popupWidth = Math.min(Math.max(textareaRect.width, 390), 560);
+  const popupWidth = Math.min(Math.max(inputRect.width, 390), 560);
   popupElement.style.width = `${popupWidth}px`;
 
   const popupHeight = popupElement.offsetHeight || 160;
   const spacing = 8;
-  let top = textareaRect.top - popupHeight - spacing;
+  const tokenRect = activeSuggestionState.token.range?.getBoundingClientRect();
+  const anchorRect = tokenRect && (tokenRect.width > 0 || tokenRect.height > 0) ? tokenRect : inputRect;
+  let top = anchorRect.top - popupHeight - spacing;
   if (top < spacing) {
-    top = textareaRect.bottom + spacing;
+    top = anchorRect.bottom + spacing;
   }
 
-  let left = textareaRect.left;
+  let left = inputRect.left;
   if (left + popupWidth > window.innerWidth - spacing) {
     left = window.innerWidth - popupWidth - spacing;
   }
@@ -519,17 +882,19 @@ function repositionPopup(): void {
   popupElement.style.top = `${Math.max(spacing, top)}px`;
 }
 
-function updateSuggestionsForTextarea(textarea: HTMLTextAreaElement): void {
+function updateSuggestionsForInput(input: AliasInputElement): void {
   if (!dcconAliasEnabled || groupedAliases.length === 0) {
     hideSuggestions();
     return;
   }
 
-  const tokenContext = extractAliasTokenContext(textarea);
+  const tokenContext = extractAliasTokenContext(input);
   if (!tokenContext) {
     hideSuggestions();
     return;
   }
+
+  void getRuntimeDcconIndex();
 
   const matches = getMatchingAliases(tokenContext.query);
   if (matches.length === 0) {
@@ -540,12 +905,12 @@ function updateSuggestionsForTextarea(textarea: HTMLTextAreaElement): void {
   const previousTarget = activeSuggestionState?.matches[activeSuggestionState.selectedIndex] ?? null;
   let selectedIndex = 0;
   if (previousTarget) {
-    const foundIndex = matches.findIndex((target) => aliasIdentity(target) === aliasIdentity(previousTarget));
+    const foundIndex = matches.findIndex((target) => areDcconTargetsSame(target, previousTarget));
     if (foundIndex >= 0) selectedIndex = foundIndex;
   }
 
   activeSuggestionState = {
-    textarea,
+    input,
     token: tokenContext,
     matches,
     selectedIndex,
@@ -579,216 +944,257 @@ function moveSuggestionSelectionByRow(stepRows: number): void {
   renderSuggestions();
 }
 
-function refreshCommentList(textarea: HTMLTextAreaElement): void {
-  const nearestCommentWrap = textarea.closest(
-    '.view_comment, .comment_wrap, .cmt_write_box, .cmt_write, .comment_box'
-  );
-  const refreshButton =
-    nearestCommentWrap?.querySelector<HTMLButtonElement>('button.btn_cmt_refresh') ??
-    document.querySelector<HTMLButtonElement>('button.btn_cmt_refresh');
+function getDcconPackagePageSignature(root: HTMLElement): string {
+  return Array.from(
+    root.querySelectorAll<HTMLButtonElement>('button.dccon_btn[package_idx]')
+  )
+    .map((button) => button.getAttribute('package_idx')?.trim() ?? '')
+    .filter(Boolean)
+    .join('|');
+}
 
-  if (refreshButton) {
-    refreshButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    return;
+async function findDcconPackageButtonAcrossPages(
+  root: HTMLElement,
+  packageIdx: string
+): Promise<HTMLButtonElement | null> {
+  const packageSelector = `button.dccon_btn[package_idx="${CSS.escape(packageIdx)}"]`;
+  const visitedPages = new Set<string>();
+
+  while (true) {
+    const packageButton = root.querySelector<HTMLButtonElement>(packageSelector);
+    if (packageButton) return packageButton;
+
+    const currentSignature = getDcconPackagePageSignature(root);
+    if (!currentSignature || visitedPages.has(currentSignature)) return null;
+    visitedPages.add(currentSignature);
+
+    const nextButton = root.querySelector<HTMLButtonElement>('button.btn_dccon_next');
+    if (!nextButton || nextButton.disabled) return null;
+
+    nextButton.click();
+    const changedPage = await waitForDcconElement(() => {
+      const nextSignature = getDcconPackagePageSignature(root);
+      if (!nextSignature || nextSignature === currentSignature) return null;
+      return root.querySelector<HTMLElement>('.dccon_tab_btnbox') ?? nextButton;
+    }, 4_000);
+    if (!changedPage) return null;
   }
-
-  const globalWindow = window as unknown as Record<string, unknown>;
-  const fallbackFunctions = ['comment_list', 'comment_reple', 'get_comment'];
-  for (const functionName of fallbackFunctions) {
-    const candidate = globalWindow[functionName];
-    if (typeof candidate !== 'function') continue;
-    try {
-      (candidate as () => void)();
-      return;
-    } catch (error) {
-      console.error(`[DcconAlias] fallback comment refresh 함수 호출 실패: ${functionName}`, error);
-    }
-  }
 }
 
-function readNamedValue(name: string, form: HTMLFormElement | null): string {
-  const readFromNamedItem = (
-    item: Element | RadioNodeList | null | undefined
-  ): string => {
-    if (!item) return '';
-    if (item instanceof RadioNodeList) {
-      return item.value ?? '';
-    }
-    if (item instanceof HTMLInputElement) {
-      if (item.type === 'checkbox') {
-        return item.checked ? item.value || 'on' : '';
-      }
-      return item.value ?? '';
-    }
-    if (item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement) {
-      return item.value ?? '';
-    }
-    return '';
-  };
-
-  const fromForm = readFromNamedItem(form?.elements.namedItem(name));
-  if (fromForm) return fromForm;
-
-  const fromDocument = document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-    `[name="${name}"]`
-  );
-  if (!fromDocument) return '';
-  if (fromDocument instanceof HTMLInputElement && fromDocument.type === 'checkbox') {
-    return fromDocument.checked ? fromDocument.value || 'on' : '';
-  }
-  return fromDocument.value ?? '';
-}
-
-function readArticleNoFallback(textarea: HTMLTextAreaElement): string {
-  const fromButton = textarea
-    .closest('.cmt_write, .cmt_write_box, .comment_box')
-    ?.querySelector<HTMLButtonElement>('button.repley_add[data-no]')
-    ?.getAttribute('data-no');
-  if (fromButton) return fromButton;
-
-  const fromGlobalButton = document
-    .querySelector<HTMLButtonElement>('button.repley_add[data-no]')
-    ?.getAttribute('data-no');
-  if (fromGlobalButton) return fromGlobalButton;
-
-  return '';
-}
-
-function firstNonEmptyValue(values: Array<string | null | undefined>): string {
-  for (const value of values) {
-    const trimmed = safeTrim(value);
-    if (trimmed) return trimmed;
-  }
-  return '';
-}
-
-function readAttributeValue(element: Element | null, attributeName: string): string {
-  return safeTrim(element?.getAttribute(attributeName));
-}
-
-function readReplyContext(
-  textarea: HTMLTextAreaElement
-): {
-  cNo: string;
-  replyNo: string;
-} {
-  const writeBox = textarea.closest<HTMLElement>('.cmt_write_box');
-  const submitButton = writeBox?.querySelector<HTMLButtonElement>('button.repley_add') ?? null;
-  const dcconButton = writeBox?.querySelector<HTMLButtonElement>('button.tx_dccon') ?? null;
-  const replyList = textarea.closest<HTMLElement>('ul.reply_list[p-no], ul.reply_list[id^="reply_list_"]');
-  const memoNo = textarea.id.match(/^memo_(\d+)$/)?.[1] ?? '';
-
-  const explicitReplyMarker = firstNonEmptyValue([
-    readAttributeValue(writeBox, 'reply_no'),
-    readAttributeValue(submitButton, 'reply_no'),
-    readAttributeValue(dcconButton, 'reply_no'),
-    readAttributeValue(submitButton, 'r_idx'),
-    readAttributeValue(dcconButton, 'r_idx'),
-    readAttributeValue(replyList, 'p-no'),
-  ]);
-
-  if (!explicitReplyMarker) {
-    return { cNo: '', replyNo: '' };
-  }
-
-  const replyNo = firstNonEmptyValue([
-    readAttributeValue(writeBox, 'reply_no'),
-    readAttributeValue(submitButton, 'reply_no'),
-    readAttributeValue(dcconButton, 'reply_no'),
-    readAttributeValue(submitButton, 'r_idx'),
-    readAttributeValue(dcconButton, 'r_idx'),
-    readAttributeValue(replyList, 'p-no'),
-    memoNo,
-    readAttributeValue(writeBox, 'data-no'),
-  ]);
-
-  const cNo = firstNonEmptyValue([
-    readAttributeValue(writeBox, 'c_no'),
-    readAttributeValue(submitButton, 'c_no'),
-    readAttributeValue(dcconButton, 'c_no'),
-    readAttributeValue(writeBox, 'data-no'),
-    readAttributeValue(replyList, 'p-no'),
-    replyNo,
-  ]);
-
-  return { cNo, replyNo };
-}
-
-async function requestInsertIcon(
+async function triggerNativeCommentDccon(
   textarea: HTMLTextAreaElement,
   selectedTarget: AliasPopupTarget
 ): Promise<boolean> {
-  const form = textarea.closest('form');
-  const currentUrl = new URL(window.location.href);
-
-  const id = readNamedValue('id', form) || currentUrl.searchParams.get('id') || '';
-  const no =
-    readNamedValue('no', form) ||
-    currentUrl.searchParams.get('no') ||
-    readArticleNoFallback(textarea);
-
-  if (!id || !no) {
-    UI.showAlert('댓글 대상 게시글 정보를 찾지 못했습니다.');
+  const writeBox = textarea.closest<HTMLElement>('.cmt_write_box');
+  const guideBox = writeBox?.querySelector<HTMLElement>('.dccon_guidebox');
+  const toggleButton = guideBox?.querySelector<HTMLButtonElement>('button.tx_dccon');
+  if (!guideBox || !toggleButton) {
+    UI.showAlert('댓글창의 디시콘 선택 영역을 찾지 못했습니다.');
     return false;
   }
 
-  const doubleConCheckbox = document.querySelector<HTMLInputElement>('#double_dcon');
-  const doubleConFallback = doubleConCheckbox?.checked ? doubleConCheckbox.value || 'on' : '';
-
-  const payload: Record<string, string> = {
-    id,
-    no,
-    package_idx: selectedTarget.packageIdx,
-    detail_idx: selectedTarget.detailIdx,
-    double_con_chk: readNamedValue('double_con_chk', form) || doubleConFallback,
-    name: readNamedValue('name', form),
-    password: readNamedValue('password', form),
-    ci_t: readNamedValue('ci_t', form),
-    input_type: readNamedValue('input_type', form) || 'comment',
-    t_vch2: readNamedValue('t_vch2', form),
-    t_vch2_chk: readNamedValue('t_vch2_chk', form),
-    c_gall_id: readNamedValue('c_gall_id', form) || id,
-    c_gall_no: readNamedValue('c_gall_no', form) || no,
-    'g-recaptcha-response': readNamedValue('g-recaptcha-response', form),
-    check_6: readNamedValue('check_6', form),
-    check_7: readNamedValue('check_7', form),
-    check_8: readNamedValue('check_8', form),
-    _GALLTYPE_: readNamedValue('_GALLTYPE_', form),
-    gall_nick_name: readNamedValue('gall_nick_name', form),
-    use_gall_nick: readNamedValue('use_gall_nick', form),
-  };
-
-  const { cNo, replyNo } = readReplyContext(textarea);
-  if (cNo) {
-    payload.c_no = cNo;
+  let panel = guideBox.querySelector<HTMLElement>('#div_con');
+  if (!panel) {
+    toggleButton.click();
+    panel = await waitForDcconElement(() => guideBox.querySelector<HTMLElement>('#div_con'));
   }
-  if (replyNo) {
-    payload.reply_no = replyNo;
+  if (!panel) {
+    UI.showAlert('댓글창의 디시콘 목록을 불러오지 못했습니다.');
+    return false;
   }
 
-  try {
-    const response = await fetch('/dccon/insert_icon', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        Accept: '*/*',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      body: new URLSearchParams(payload).toString(),
+  guideBox.querySelector('[data-dc-shortcut-alias-proxy]')?.remove();
+
+  const targetButton = document.createElement('button');
+  targetButton.type = 'button';
+  targetButton.className = 'img_dccon';
+  targetButton.hidden = true;
+  targetButton.style.setProperty('display', 'none', 'important');
+  targetButton.dataset.dcShortcutAliasProxy = 'true';
+  targetButton.setAttribute('package_idx', selectedTarget.packageIdx);
+  targetButton.setAttribute('detail_idx', selectedTarget.detailIdx);
+  targetButton.title = selectedTarget.title?.trim() || selectedTarget.alias;
+  const thumbnailUrl = selectedTarget.thumbnailUrl || selectedTarget.imageUrl;
+  if (thumbnailUrl) {
+    const image = document.createElement('img');
+    image.src = thumbnailUrl;
+    image.alt = targetButton.title;
+    targetButton.appendChild(image);
+  }
+  panel.appendChild(targetButton);
+
+  targetButton.click();
+  window.setTimeout(() => targetButton.remove(), 0);
+  return true;
+}
+
+function findWriteDcconDetailButton(
+  root: HTMLElement,
+  selectedTarget: AliasPopupTarget
+): HTMLButtonElement | null {
+  const packageIdx = CSS.escape(selectedTarget.packageIdx);
+  const detailIdx = CSS.escape(selectedTarget.detailIdx);
+  return root.querySelector<HTMLButtonElement>(
+    `button.img_dccon[package_idx="${packageIdx}"][detail_idx="${detailIdx}"]`
+  );
+}
+
+function waitForDcconElement<T extends Element>(
+  findElement: () => T | null,
+  timeoutMs: number = 4_000
+): Promise<T | null> {
+  const existingElement = findElement();
+  if (existingElement) return Promise.resolve(existingElement);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (element: T | null): void => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      window.clearTimeout(timeoutId);
+      resolve(element);
+    };
+    const observer = new MutationObserver(() => {
+      const element = findElement();
+      if (element) finish(element);
     });
+    const timeoutId = window.setTimeout(() => finish(findElement()), timeoutMs);
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+}
 
-    const responseText = (await response.text()).trim().toLowerCase();
-    if (!response.ok || !responseText.includes('ok')) {
-      UI.showAlert('디시콘 등록 요청이 실패했습니다.');
-      return false;
-    }
-    return true;
-  } catch (error) {
-    console.error('[DcconAlias] insert_icon 요청 실패:', error);
-    UI.showAlert('디시콘 등록 요청 중 오류가 발생했습니다.');
+async function resolveWriteDcconButton(
+  editor: HTMLDivElement,
+  selectedTarget: AliasPopupTarget
+): Promise<HTMLButtonElement | null> {
+  const editorFrame = editor.closest<HTMLElement>('.note-editor');
+  if (!editorFrame) return null;
+
+  const existingDetailButton = findWriteDcconDetailButton(editorFrame, selectedTarget);
+  if (existingDetailButton) return existingDetailButton;
+
+  const toolbarButton = editorFrame?.querySelector<HTMLButtonElement>(
+    'button.note-btn[aria-label="디시콘"]'
+  );
+
+  if (!editorFrame.querySelector('.dccon_tab_btnbox') && toolbarButton) {
+    toolbarButton.click();
+    await waitForDcconElement(() =>
+      editorFrame.querySelector<HTMLElement>('.dccon_tab_btnbox')
+    );
+  }
+
+  const packageButton = await findDcconPackageButtonAcrossPages(
+    editorFrame,
+    selectedTarget.packageIdx
+  );
+  if (!packageButton) return null;
+
+  packageButton.click();
+  return waitForDcconElement(() =>
+    findWriteDcconDetailButton(editorFrame, selectedTarget)
+  );
+}
+
+function dispatchWriteEditorInput(
+  editor: HTMLDivElement,
+  inputType: 'deleteContentBackward' | 'insertImage' = 'deleteContentBackward'
+): void {
+  editor.dispatchEvent(
+    new InputEvent('input', {
+      bubbles: true,
+      inputType,
+    })
+  );
+}
+
+interface WriteEditorTokenRemoval {
+  range: Range;
+  removedToken: string;
+  selection: Selection;
+}
+
+function removeWriteEditorAliasToken(
+  editor: HTMLDivElement,
+  token: AliasTokenContext
+): WriteEditorTokenRemoval | null {
+  const tokenRange = token.range;
+  if (
+    !tokenRange ||
+    !editor.contains(tokenRange.startContainer) ||
+    !editor.contains(tokenRange.endContainer)
+  ) {
+    return null;
+  }
+
+  editor.focus();
+  const selection = window.getSelection();
+  if (!selection) return null;
+
+  const removedToken = tokenRange.toString();
+  tokenRange.deleteContents();
+  tokenRange.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(tokenRange);
+  return { range: tokenRange, removedToken, selection };
+}
+
+function restoreWriteEditorAliasToken(
+  editor: HTMLDivElement,
+  removal: WriteEditorTokenRemoval
+): void {
+  const recoveryText = document.createTextNode(removal.removedToken);
+  removal.range.insertNode(recoveryText);
+  removal.range.setStartAfter(recoveryText);
+  removal.range.collapse(true);
+  removal.selection.removeAllRanges();
+  removal.selection.addRange(removal.range);
+  dispatchWriteEditorInput(editor);
+}
+
+async function insertDcconIntoWriteEditor(
+  editor: HTMLDivElement,
+  token: AliasTokenContext,
+  selectedTarget: AliasPopupTarget
+): Promise<boolean> {
+  if (!token.range || !editor.contains(token.range.startContainer)) {
+    UI.showAlert('글쓰기 입력 위치를 찾지 못했습니다. @별칭을 다시 입력해주세요.');
     return false;
   }
+
+  const editorFrame = editor.closest<HTMLElement>('.note-editor');
+  const existingDetailButton = editorFrame
+    ? findWriteDcconDetailButton(editorFrame, selectedTarget)
+    : null;
+  const detailButton = existingDetailButton ?? (await resolveWriteDcconButton(editor, selectedTarget));
+  if (!detailButton) {
+    UI.showAlert('글쓰기 페이지에서 해당 디시콘을 찾지 못했습니다.');
+    return false;
+  }
+
+  const removal = removeWriteEditorAliasToken(editor, token);
+  if (!removal) {
+    UI.showAlert('글쓰기 입력 위치를 찾지 못했습니다. @별칭을 다시 입력해주세요.');
+    return false;
+  }
+  dispatchWriteEditorInput(editor);
+
+  // 원본 처리기가 /dccon/insert_icon 응답의 img_src로 삽입합니다.
+  // 목록의 video_src를 img에 직접 넣으면 게시 후에도 깨진 이미지가 남습니다.
+  const previousMedia = new Set(Array.from(editor.querySelectorAll('img.written_dccon, video.written_dccon')));
+  detailButton.click();
+
+  const insertedMedia = await waitForDcconElement(
+    () => Array.from(editor.querySelectorAll('img.written_dccon, video.written_dccon'))
+      .find((element) => !previousMedia.has(element)) ?? null,
+    10_000
+  );
+  if (insertedMedia) return true;
+
+  restoreWriteEditorAliasToken(editor, removal);
+  UI.showAlert('글쓰기 본문에 디시콘을 삽입하지 못했습니다.');
+  return false;
 }
 
 async function confirmSuggestionSelection(index: number): Promise<void> {
@@ -799,22 +1205,27 @@ async function confirmSuggestionSelection(index: number): Promise<void> {
   if (!selectedTarget) return;
 
   hideSuggestions();
+  const currentTarget = await resolveCurrentDcconTarget(selectedTarget);
 
-  const inserted = await requestInsertIcon(stateSnapshot.textarea, selectedTarget);
-  if (!inserted) return;
-
-  if (stateSnapshot.textarea.value.trim().length > 0) {
-    stateSnapshot.textarea.value = '';
-    stateSnapshot.textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  if (isWriteEditor(stateSnapshot.input)) {
+    await insertDcconIntoWriteEditor(stateSnapshot.input, stateSnapshot.token, currentTarget);
+    return;
   }
 
-  refreshCommentList(stateSnapshot.textarea);
+  const triggered = await triggerNativeCommentDccon(stateSnapshot.input, currentTarget);
+  if (!triggered) return;
+
+  if (stateSnapshot.input.value.trim().length > 0) {
+    stateSnapshot.input.value = '';
+    stateSnapshot.input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
 }
 
-function removeTargetFromAliasMap(packageIdx: string, detailIdx: string): void {
+function removeTargetFromAliasMap(targetInfo: AliasEditableTargetInfo): void {
   for (const key of Object.keys(aliasMap)) {
     const filteredTargets = aliasMap[key].filter(
-      (target) => !(target.packageIdx === packageIdx && target.detailIdx === detailIdx)
+      (target) => !areDcconTargetsSame(target, targetInfo)
     );
     if (filteredTargets.length > 0) {
       aliasMap[key] = filteredTargets;
@@ -828,7 +1239,7 @@ async function setAliasesForTarget(
   aliases: string[],
   targetInfo: AliasEditableTargetInfo
 ): Promise<void> {
-  removeTargetFromAliasMap(targetInfo.packageIdx, targetInfo.detailIdx);
+  removeTargetFromAliasMap(targetInfo);
 
   const baseTime = Date.now();
   aliases.forEach((alias, index) => {
@@ -839,15 +1250,16 @@ async function setAliasesForTarget(
       alias,
       packageIdx: targetInfo.packageIdx,
       detailIdx: targetInfo.detailIdx,
+      packageTitle: targetInfo.packageTitle,
       title: targetInfo.title,
       imageUrl: targetInfo.imageUrl,
+      thumbnailUrl: targetInfo.thumbnailUrl,
       updatedAt: baseTime + index,
     };
 
     const targets = aliasMap[normalizedAlias] ?? [];
     const existingIndex = targets.findIndex(
-      (target) =>
-        target.packageIdx === targetInfo.packageIdx && target.detailIdx === targetInfo.detailIdx
+      (target) => areDcconTargetsSame(target, targetInfo)
     );
     if (existingIndex >= 0) {
       targets[existingIndex] = nextTarget;
@@ -867,7 +1279,7 @@ function openAliasEditPrompt(
   const existingAliases =
     existingAliasesFromPopup && existingAliasesFromPopup.length > 0
       ? [...existingAliasesFromPopup]
-      : getAliasesByTarget(targetInfo.packageIdx, targetInfo.detailIdx);
+      : getAliasesByTarget(targetInfo.packageIdx, targetInfo.detailIdx, targetInfo.imageUrl);
 
   const suggestedAliasInput =
     existingAliases.length > 0 ? existingAliases.join(', ') : targetInfo.title?.trim() || '';
@@ -903,14 +1315,38 @@ function handleContextMenu(event: MouseEvent): void {
   event.preventDefault();
   event.stopPropagation();
 
-  const imageUrl = dcconButton.querySelector<HTMLImageElement>('img')?.src;
+  const previewImage = dcconButton.querySelector<HTMLImageElement>('img');
+  const previewVideo = dcconButton.querySelector<HTMLVideoElement>('video');
+  const imageUrl =
+    previewVideo?.currentSrc ||
+    previewVideo?.src ||
+    previewVideo?.getAttribute('data-src') ||
+    previewImage?.currentSrc ||
+    previewImage?.src ||
+    previewImage?.getAttribute('data-src') ||
+    undefined;
+  const thumbnailUrl =
+    previewImage?.currentSrc ||
+    previewImage?.src ||
+    previewImage?.getAttribute('data-src') ||
+    previewVideo?.poster ||
+    imageUrl ||
+    undefined;
   const title = dcconButton.getAttribute('title')?.trim() || undefined;
+  const packageTitle = document
+    .querySelector<HTMLButtonElement>(
+      `button.dccon_btn[package_idx="${CSS.escape(packageIdx)}"]`
+    )
+    ?.getAttribute('title')
+    ?.trim();
 
   openAliasEditPrompt({
     packageIdx,
     detailIdx,
+    packageTitle: packageTitle || undefined,
     title,
     imageUrl,
+    thumbnailUrl,
   });
 }
 
@@ -923,8 +1359,8 @@ function preventEventPropagation(event: KeyboardEvent): void {
 function handleKeydown(event: KeyboardEvent): void {
   if (!dcconAliasEnabled || !activeSuggestionState) return;
   if (event.isComposing) return;
-  if (!isCommentTextarea(event.target as Element)) return;
-  if (event.target !== activeSuggestionState.textarea) return;
+  const input = getAliasInput(event.target);
+  if (!input || input !== activeSuggestionState.input) return;
 
   if (event.key === 'Tab') {
     preventEventPropagation(event);
@@ -975,8 +1411,9 @@ function handleInput(event: Event): void {
   }
 
   const target = event.target;
-  if (!(target instanceof HTMLTextAreaElement) || !isCommentTextarea(target)) return;
-  updateSuggestionsForTextarea(target);
+  const input = getAliasInput(target);
+  if (!input) return;
+  updateSuggestionsForInput(input);
 }
 
 function handleFocusIn(event: FocusEvent): void {
@@ -986,8 +1423,10 @@ function handleFocusIn(event: FocusEvent): void {
   }
 
   const target = event.target;
-  if (target instanceof HTMLTextAreaElement && isCommentTextarea(target)) {
-    updateSuggestionsForTextarea(target);
+  const input = getAliasInput(target);
+  if (input) {
+    void getRuntimeDcconIndex();
+    updateSuggestionsForInput(input);
     return;
   }
   hideSuggestions();
@@ -997,7 +1436,7 @@ function handleDocumentMouseDown(event: MouseEvent): void {
   const target = event.target as Node | null;
   if (!target) return;
   if (popupElement?.contains(target)) return;
-  if (activeSuggestionState?.textarea.contains(target)) return;
+  if (activeSuggestionState?.input.contains(target)) return;
   hideSuggestions();
 }
 

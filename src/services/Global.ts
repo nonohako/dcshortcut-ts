@@ -44,6 +44,8 @@ export const MACRO_INTERVAL_KEY = 'dcinside_macro_interval';
  * @description 디시콘 별칭 맵을 저장하는 storage 키
  */
 export const DCCON_ALIAS_MAP_KEY = 'dcinside_dccon_alias_map';
+// 구형 계정별 별칭 데이터를 단일 공용 맵으로 병합할 때만 사용합니다.
+export const DCCON_ALIAS_PROFILES_KEY = 'dcinside_dccon_alias_profiles';
 
 /**
  * @description 디시콘 별칭 기능 활성화 여부를 저장하는 storage 키

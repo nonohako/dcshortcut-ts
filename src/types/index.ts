@@ -60,8 +60,10 @@ export interface DcconAliasTarget {
   alias: string;
   packageIdx: string;
   detailIdx: string;
+  packageTitle?: string;
   title?: string;
   imageUrl?: string;
+  thumbnailUrl?: string;
   updatedAt: number;
 }
 
@@ -70,3 +72,19 @@ export interface DcconAliasTarget {
  * @description 정규화된 별칭 키를 기준으로 디시콘 대상 배열을 저장하는 타입.
  */
 export type DcconAliasMap = Record<string, DcconAliasTarget[]>;
+
+/**
+ * @interface DcconAliasProfileData
+ * @description 구형 계정별 저장값을 단일 공용 별칭 맵으로 병합할 때만 읽는 데이터.
+ */
+export interface DcconAliasProfileData {
+  label: string;
+  aliasMap: DcconAliasMap;
+  updatedAt: number;
+}
+
+/**
+ * @type DcconAliasProfiles
+ * @description 구형 프로필 키 기반 저장 구조의 마이그레이션 타입.
+ */
+export type DcconAliasProfiles = Record<string, DcconAliasProfileData>;

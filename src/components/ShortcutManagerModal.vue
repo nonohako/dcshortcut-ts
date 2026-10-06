@@ -172,11 +172,16 @@
       <!-- 디시콘 별칭 탭 -->
       <div v-show="activeTab === 'dccon'" class="tab-pane">
         <div class="shortcut-section">
-          <div class="shortcut-section-title">디시콘 별칭</div>
-          <p class="shortcut-section-note">
-            댓글창 디시콘 아이콘 <strong>우클릭</strong> → 별칭 등록.<br>
-            댓글에 <strong>@별칭</strong> 입력 시 목록 표시 (TAB/Shift+TAB 전환, ENTER/클릭 선택)
-          </p>
+          <div class="dccon-section-heading">
+            <div class="shortcut-section-title">디시콘 별칭</div>
+            <FootnoteTrigger
+              :tooltipText="dcconRegistrationTooltipText"
+              tooltipPosition="bottom"
+              :multilineThreshold="20"
+            >
+              <template #trigger><span class="dccon-help-trigger">[등록 방법]</span></template>
+            </FootnoteTrigger>
+          </div>
           <div class="dccon-toolbar">
             <button class="dc-button dc-button-blue alias-refresh-button" @click="loadDcconAliasItems">
               목록 새로고침
@@ -199,6 +204,24 @@
               @input="updateDcconAliasSearchQuery"
               @compositionend="updateDcconAliasSearchQuery"
             />
+            <div class="dccon-sort-controls" aria-label="디시콘 별칭 정렬">
+              <button
+                type="button"
+                class="dccon-sort-button"
+                :class="{ 'is-active': dcconAliasSortMode === 'name' }"
+                @click="setDcconAliasSort('name')"
+              >
+                이름순 {{ dcconAliasSortMode === 'name' ? (dcconAliasSortDirection === 'asc' ? '↑' : '↓') : '' }}
+              </button>
+              <button
+                type="button"
+                class="dccon-sort-button"
+                :class="{ 'is-active': dcconAliasSortMode === 'registered' }"
+                @click="setDcconAliasSort('registered')"
+              >
+                등록순 {{ dcconAliasSortMode === 'registered' ? (dcconAliasSortDirection === 'asc' ? '↑' : '↓') : '' }}
+              </button>
+            </div>
           </div>
           <div v-if="dcconAliasItems.length === 0" class="alias-empty-state">
             등록된 디시콘 별칭이 없습니다.
@@ -209,7 +232,7 @@
           <ul v-else class="alias-list">
             <li v-for="item in filteredDcconAliasItems" :key="item.id" class="alias-list-item">
               <div class="alias-item-main">
-                <img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.alias" :title="item.aliasTooltip" loading="lazy" />
+                <img v-if="item.thumbnailUrl || item.imageUrl" :src="item.thumbnailUrl || item.imageUrl" :alt="item.alias" :title="item.aliasTooltip" loading="lazy" />
                 <span class="alias-item-aliases" :title="item.aliasTooltip">
                   {{ item.aliases.map((alias) => `@${alias}`).join(', ') }}
                 </span>
@@ -383,6 +406,9 @@ interface DcconAliasListItem extends DcconAliasTarget {
   id: string;
 }
 
+type DcconAliasSortMode = 'name' | 'registered';
+type DcconAliasSortDirection = 'asc' | 'desc';
+
 type LocalStorageSnapshot = Record<string, unknown>;
 
 interface SettingsBackupFile {
@@ -420,6 +446,8 @@ const activeTab = ref<TabName>('shortcuts');
 const macroIntervalTooltipText = ref<string>("너무 짧게 설정 시 IP 차단 위험 증가 (2초 이상 권장)");
 const dcconAliasItems = ref<DcconAliasListItem[]>([]);
 const dcconAliasSearchQuery = ref<string>('');
+const dcconAliasSortMode = ref<DcconAliasSortMode>('name');
+const dcconAliasSortDirection = ref<DcconAliasSortDirection>('asc');
 const isResetDialogVisible = ref<boolean>(false);
 const resetConfirmInput = ref<string>('');
 const restoreFileInput = ref<HTMLInputElement | null>(null);
@@ -427,6 +455,9 @@ const allSwitchesTarget = ref<'on' | 'off' | null>(null);
 const favoritesCommandShortcut = ref('');
 const isFavoritesCommandLoaded = ref(false);
 let debounceTimer: number | null = null;
+
+const dcconRegistrationTooltipText =
+  '댓글창·글쓰기 디시콘 아이콘 우클릭 → 별칭 등록.\n댓글이나 글 본문에 @별칭 입력 시 목록 표시 (TAB/Shift+TAB 전환, ENTER/클릭 선택)';
 
 // =================================================================
 // Computed Properties (계산된 속성)
@@ -527,7 +558,7 @@ const getAliasSortBucket = (alias: string): number => {
   if (/^[ㄱ-ㅎㅏ-ㅣ가-힣]$/.test(firstChar)) return 2;
   return 3;
 };
-const compareAliasItems = (a: DcconAliasListItem, b: DcconAliasListItem): number => {
+const compareAliasItemsByName = (a: DcconAliasListItem, b: DcconAliasListItem): number => {
   const bucketDiff = getAliasSortBucket(a.alias) - getAliasSortBucket(b.alias);
   if (bucketDiff !== 0) return bucketDiff;
 
@@ -541,6 +572,11 @@ const compareAliasItems = (a: DcconAliasListItem, b: DcconAliasListItem): number
   if (packageCompare !== 0) return packageCompare;
   return a.detailIdx.localeCompare(b.detailIdx, 'en', { numeric: true });
 };
+
+const compareAliasItemsByRegistration = (
+  a: DcconAliasListItem,
+  b: DcconAliasListItem
+): number => a.updatedAt - b.updatedAt || compareAliasItemsByName(a, b);
 
 const extractHangulInitials = (value: string): string => {
   let initials = '';
@@ -580,12 +616,19 @@ const normalizedDcconAliasSearchQuery = computed<string>(() =>
 
 const filteredDcconAliasItems = computed<DcconAliasListItem[]>(() => {
   const query = normalizedDcconAliasSearchQuery.value;
-  if (!query) return dcconAliasItems.value;
   const consonantQuery = query.replace(/\s+/g, '');
+  const items = query
+    ? dcconAliasItems.value.filter((item) =>
+        item.aliases.some((alias) => matchesAliasSearchQuery(alias, query, consonantQuery))
+      )
+    : [...dcconAliasItems.value];
 
-  return dcconAliasItems.value.filter((item) =>
-    item.aliases.some((alias) => matchesAliasSearchQuery(alias, query, consonantQuery))
-  );
+  const direction = dcconAliasSortDirection.value === 'asc' ? 1 : -1;
+  const comparator =
+    dcconAliasSortMode.value === 'name'
+      ? compareAliasItemsByName
+      : compareAliasItemsByRegistration;
+  return items.sort((a, b) => direction * comparator(a, b));
 });
 
 const favoritesCommandDescription = computed(() => {
@@ -600,14 +643,51 @@ const updateDcconAliasSearchQuery = (event: Event): void => {
   dcconAliasSearchQuery.value = target.value;
 };
 
+const setDcconAliasSort = (mode: DcconAliasSortMode): void => {
+  if (dcconAliasSortMode.value === mode) {
+    dcconAliasSortDirection.value =
+      dcconAliasSortDirection.value === 'asc' ? 'desc' : 'asc';
+    return;
+  }
+
+  dcconAliasSortMode.value = mode;
+  dcconAliasSortDirection.value = mode === 'name' ? 'asc' : 'desc';
+};
+
+const getDcconAliasTargetIdentity = (
+  target: Pick<DcconAliasTarget, 'packageIdx' | 'detailIdx' | 'imageUrl'>
+): string => {
+  if (target.imageUrl) {
+    try {
+      const url = new URL(target.imageUrl, window.location.href);
+      const mediaNo = url.pathname.endsWith('/dccon.php') ? url.searchParams.get('no') : '';
+      if (mediaNo) return `dccon:${mediaNo}`;
+      return `image:${url.href}`;
+    } catch {
+      return `image:${target.imageUrl.trim()}`;
+    }
+  }
+  return `id:${target.packageIdx}:${target.detailIdx}`;
+};
+
+const areDcconAliasTargetsSame = (
+  left: Pick<DcconAliasTarget, 'packageIdx' | 'detailIdx' | 'imageUrl'>,
+  right: Pick<DcconAliasTarget, 'packageIdx' | 'detailIdx' | 'imageUrl'>
+): boolean => {
+  if (left.packageIdx === right.packageIdx && left.detailIdx === right.detailIdx) return true;
+
+  const leftIdentity = left.imageUrl ? getDcconAliasTargetIdentity(left) : '';
+  const rightIdentity = right.imageUrl ? getDcconAliasTargetIdentity(right) : '';
+  return Boolean(leftIdentity && leftIdentity === rightIdentity);
+};
+
 const removeAliasTargetFromMap = (
   aliasMap: DcconAliasMap,
-  packageIdx: string,
-  detailIdx: string
+  target: Pick<DcconAliasTarget, 'packageIdx' | 'detailIdx' | 'imageUrl'>
 ): void => {
   Object.keys(aliasMap).forEach((aliasKey) => {
     const filteredTargets = aliasMap[aliasKey].filter(
-      (target) => !(target.packageIdx === packageIdx && target.detailIdx === detailIdx)
+      (item) => !areDcconAliasTargetsSame(item, target)
     );
     if (filteredTargets.length > 0) {
       aliasMap[aliasKey] = filteredTargets;
@@ -619,10 +699,13 @@ const removeAliasTargetFromMap = (
 
 const setAliasesForTarget = (
   aliasMap: DcconAliasMap,
-  target: Pick<DcconAliasTarget, 'packageIdx' | 'detailIdx' | 'title' | 'imageUrl'>,
+  target: Pick<
+    DcconAliasTarget,
+    'packageIdx' | 'detailIdx' | 'packageTitle' | 'title' | 'imageUrl' | 'thumbnailUrl'
+  >,
   aliases: string[]
 ): void => {
-  removeAliasTargetFromMap(aliasMap, target.packageIdx, target.detailIdx);
+  removeAliasTargetFromMap(aliasMap, target);
 
   const baseTime = Date.now();
   aliases.forEach((alias, index) => {
@@ -633,14 +716,16 @@ const setAliasesForTarget = (
       alias,
       packageIdx: target.packageIdx,
       detailIdx: target.detailIdx,
+      packageTitle: target.packageTitle,
       title: target.title,
       imageUrl: target.imageUrl,
+      thumbnailUrl: target.thumbnailUrl,
       updatedAt: baseTime + index,
     };
 
     const targets = aliasMap[normalized] ?? [];
     const existingIndex = targets.findIndex(
-      (item) => item.packageIdx === target.packageIdx && item.detailIdx === target.detailIdx
+      (item) => areDcconAliasTargetsSame(item, target)
     );
     if (existingIndex >= 0) {
       targets[existingIndex] = nextTarget;
@@ -1104,25 +1189,25 @@ const updateDcconAliasEnabled = async (event: Event): Promise<void> => {
 
 const loadDcconAliasItems = async (): Promise<void> => {
   const aliasMap = await Storage.getDcconAliasMap();
-  const grouped = new Map<
-    string,
-    {
+  const grouped: Array<{
       packageIdx: string;
       detailIdx: string;
+      packageTitle?: string;
       title?: string;
       imageUrl?: string;
+      thumbnailUrl?: string;
       aliases: Array<{ alias: string; updatedAt: number }>;
-    }
-  >();
+    }> = [];
 
   Object.values(aliasMap).forEach((targets) => {
     targets.forEach((target) => {
-      const groupKey = `${target.packageIdx}:${target.detailIdx}`;
-      const draft = grouped.get(groupKey) ?? {
+      const draft = grouped.find((group) => areDcconAliasTargetsSame(group, target)) ?? {
         packageIdx: target.packageIdx,
         detailIdx: target.detailIdx,
+        packageTitle: target.packageTitle,
         title: target.title,
         imageUrl: target.imageUrl,
+        thumbnailUrl: target.thumbnailUrl,
         aliases: [],
       };
 
@@ -1131,8 +1216,10 @@ const loadDcconAliasItems = async (): Promise<void> => {
         updatedAt: Number.isFinite(target.updatedAt) ? target.updatedAt : Date.now(),
       });
       if (!draft.title && target.title) draft.title = target.title;
+      if (!draft.packageTitle && target.packageTitle) draft.packageTitle = target.packageTitle;
       if (!draft.imageUrl && target.imageUrl) draft.imageUrl = target.imageUrl;
-      grouped.set(groupKey, draft);
+      if (!draft.thumbnailUrl && target.thumbnailUrl) draft.thumbnailUrl = target.thumbnailUrl;
+      if (!grouped.includes(draft)) grouped.push(draft);
     });
   });
 
@@ -1160,14 +1247,15 @@ const loadDcconAliasItems = async (): Promise<void> => {
       aliasTooltip: aliases.map((alias) => `@${alias}`).join(', '),
       packageIdx: draft.packageIdx,
       detailIdx: draft.detailIdx,
+      packageTitle: draft.packageTitle,
       title: draft.title,
       imageUrl: draft.imageUrl,
+      thumbnailUrl: draft.thumbnailUrl,
       updatedAt: draft.aliases.reduce((max, item) => Math.max(max, item.updatedAt), 0),
-      id: `${draft.packageIdx}:${draft.detailIdx}`,
+      id: getDcconAliasTargetIdentity(draft),
     });
   });
 
-  flattened.sort(compareAliasItems);
   dcconAliasItems.value = flattened;
 };
 
@@ -1184,14 +1272,16 @@ const editDcconAlias = async (item: DcconAliasListItem): Promise<void> => {
     return;
   }
 
-  const aliasMap: DcconAliasMap = await Storage.getDcconAliasMap();
+  const aliasMap = await Storage.getDcconAliasMap();
   setAliasesForTarget(
     aliasMap,
     {
       packageIdx: item.packageIdx,
       detailIdx: item.detailIdx,
+      packageTitle: item.packageTitle,
       title: item.title,
       imageUrl: item.imageUrl,
+      thumbnailUrl: item.thumbnailUrl,
     },
     aliases
   );
@@ -1202,8 +1292,8 @@ const editDcconAlias = async (item: DcconAliasListItem): Promise<void> => {
 };
 
 const removeDcconAlias = async (item: DcconAliasListItem): Promise<void> => {
-  const aliasMap: DcconAliasMap = await Storage.getDcconAliasMap();
-  removeAliasTargetFromMap(aliasMap, item.packageIdx, item.detailIdx);
+  const aliasMap = await Storage.getDcconAliasMap();
+  removeAliasTargetFromMap(aliasMap, item);
 
   await Storage.saveDcconAliasMap(aliasMap);
   await loadDcconAliasItems();
@@ -1773,18 +1863,69 @@ onUnmounted(() => {
   margin-bottom: 12px;
 }
 
+.dccon-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dccon-section-heading .shortcut-section-title {
+  margin-bottom: 0;
+}
+
+.dccon-help-trigger {
+  color: var(--dc-color-accent);
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
 .dccon-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
 .dccon-search-input {
-  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
   border: 1px solid var(--dc-color-border);
   border-radius: 6px;
   background: var(--dc-color-surface);
   color: var(--dc-color-text-primary);
   padding: 8px 10px;
   font-size: 13.5px;
+}
+
+.dccon-sort-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--dc-color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dccon-sort-button {
+  border: 0;
+  border-right: 1px solid var(--dc-color-border);
+  background: var(--dc-color-surface);
+  color: var(--dc-color-text-muted);
+  padding: 8px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dccon-sort-button:last-child {
+  border-right: 0;
+}
+
+.dccon-sort-button:hover,
+.dccon-sort-button.is-active {
+  background: var(--dc-color-bg);
+  color: var(--dc-color-accent);
 }
 
 .dccon-search-input::placeholder {

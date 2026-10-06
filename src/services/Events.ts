@@ -74,6 +74,7 @@ interface EventsModuleType {
   _infiniteScrollTicking: boolean;
   _hasShownInfiniteEndAlert: boolean;
   _boundInfiniteScrollHandler: (() => void) | null;
+  _commentScrollCleanup: (() => void) | null;
   numberInput: NumberInputState;
 
   setup(
@@ -121,6 +122,7 @@ interface EventsModuleType {
   updateNumberDisplay(text: string): void;
   resetNumberTimeout(): void;
   exitNumberInput(): void;
+  scrollToComment(): void;
   handleShortcuts(key: string, event: KeyboardEvent): Promise<void>;
   handleKeydown(event: KeyboardEvent): Promise<void>;
 }
@@ -143,6 +145,20 @@ const COMMON_FETCH_HEADERS = {
   'Sec-Fetch-User': '?1',
   'Upgrade-Insecure-Requests': '1',
 };
+
+function isKeyboardInputElement(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
+function isTypingContextForKeyboardEvent(event: KeyboardEvent): boolean {
+  if (event.composedPath().some((target) => isKeyboardInputElement(target))) return true;
+  return isKeyboardInputElement(document.activeElement);
+}
 // =================================================================
 // Events Module (이벤트 모듈)
 // =================================================================
@@ -165,6 +181,7 @@ const Events: EventsModuleType = {
   _infiniteScrollTicking: false,
   _hasShownInfiniteEndAlert: false,
   _boundInfiniteScrollHandler: null,
+  _commentScrollCleanup: null,
   numberInput: {
     mode: false,
     buffer: '',
@@ -1337,6 +1354,53 @@ const Events: EventsModuleType = {
     }
   },
 
+  scrollToComment(): void {
+    const target = document.querySelector<HTMLElement>('.comment_count');
+    if (!target) return;
+
+    this._commentScrollCleanup?.();
+
+    const observedContent = document.querySelector<HTMLElement>(
+      '.writing_view_box, .write_div, .view_content_wrap'
+    );
+    let active = true;
+    let rafId: number | null = null;
+    let timeoutId: number | null = null;
+
+    const alignTarget = (): void => {
+      if (!active || !target.isConnected) return;
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        if (active && target.isConnected) {
+          target.scrollIntoView({ behavior: 'auto', block: 'center' });
+        }
+      });
+    };
+
+    const resizeObserver = observedContent
+      ? new ResizeObserver(() => alignTarget())
+      : null;
+
+    const cleanup = (): void => {
+      if (!active) return;
+      active = false;
+      resizeObserver?.disconnect();
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      window.removeEventListener('wheel', cleanup);
+      window.removeEventListener('touchstart', cleanup);
+      if (this._commentScrollCleanup === cleanup) this._commentScrollCleanup = null;
+    };
+
+    this._commentScrollCleanup = cleanup;
+    if (observedContent) resizeObserver?.observe(observedContent);
+    window.addEventListener('wheel', cleanup, { passive: true, once: true });
+    window.addEventListener('touchstart', cleanup, { passive: true, once: true });
+    timeoutId = window.setTimeout(cleanup, 10_000);
+    alignTarget();
+  },
+
   async handleShortcuts(actionForPressedKey, event) {
     if (!this.settingsStore || !this.ui || !this.posts || !this.gallery) return;
 
@@ -1383,9 +1447,7 @@ const Events: EventsModuleType = {
       case 'D':
         if (this.settingsStore.shortcutDRefreshCommentEnabled)
           document.querySelector<HTMLButtonElement>('button.btn_cmt_refresh')?.click();
-        document
-          .querySelector('.comment_count')
-          ?.scrollIntoView({ behavior: 'auto', block: 'center' });
+        this.scrollToComment();
         break;
       case 'R':
         location.reload();
@@ -1501,12 +1563,9 @@ const Events: EventsModuleType = {
       }
     }
 
-    const activeEl = document.activeElement;
-    const isTypingContext =
-      !!activeEl &&
-      (activeEl.tagName === 'TEXTAREA' ||
-        activeEl.tagName === 'INPUT' ||
-        (activeEl as HTMLElement).isContentEditable);
+    // Shadow DOM 바깥의 document.activeElement는 실제 input 대신 호스트를 반환할 수 있습니다.
+    // composedPath()까지 확인해 설정 모달 입력 중 페이지 단축키가 실행되지 않게 합니다.
+    const isTypingContext = isTypingContextForKeyboardEvent(event);
 
     const pressedCombo = getShortcutComboFromEvent(event);
     if (pressedCombo) {
