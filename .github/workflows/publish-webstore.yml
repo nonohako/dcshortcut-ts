@@ -1,0 +1,83 @@
+name: Publish Chrome Web Store
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag (for example v0.4.5)'
+        required: true
+        type: string
+      validate_only:
+        description: 'Validate the release ZIP without uploading or submitting'
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chrome-web-store
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'nonohako/dcshortcut-ts' &&
+      ((github.event_name == 'release' && !github.event.release.prerelease) ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      CWS_EXTENSION_ID: egojoffmbccdmdllejmaahbochbfdhbh
+      CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+    steps:
+      # Use the maintained publisher script even when retrying an older release.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Test publisher state handling
+        run: python3 -m unittest discover -s scripts -p 'test_webstore_publish.py'
+
+      - name: Download and validate the released ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/webstore_publish.py prepare --tag "$RELEASE_TAG" --directory "$RUNNER_TEMP/webstore"
+
+      - name: Check account configuration
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.validate_only) }}
+        env:
+          CWS_SERVICE_ACCOUNT_JSON: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 - <<'PY'
+          import os
+          missing = [key for key in ('CWS_PUBLISHER_ID', 'CWS_SERVICE_ACCOUNT_JSON') if not os.environ.get(key)]
+          if missing:
+              raise SystemExit('Missing settings: ' + ', '.join(missing) + '. See docs/webstore-automation.md.')
+          PY
+
+      - name: Authenticate to Chrome Web Store
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.validate_only) }}
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          credentials_json: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+          service_account: ${{ fromJSON(secrets.CWS_SERVICE_ACCOUNT_JSON).client_email }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          create_credentials_file: false
+          export_environment_variables: false
+
+      - name: Upload and submit for review
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.validate_only) }}
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: python3 scripts/webstore_publish.py submit --tag "$RELEASE_TAG" --directory "$RUNNER_TEMP/webstore"
+
+      - name: Validation-only result
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.validate_only }}
+        run: echo 'Validation only. No Chrome Web Store upload or submission was made.' >> "$GITHUB_STEP_SUMMARY"

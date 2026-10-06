@@ -108,6 +108,8 @@ pnpm run build:dev
 
 ## 기술 스택
 
+릴리스 유지보수: [Chrome 웹스토어 자동 제출 설정](docs/webstore-automation.md)
+
 - Vue 3
 - TypeScript
 - Vite

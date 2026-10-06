@@ -31,3 +31,8 @@ dcshortcut-ts-v*.tar.gz
 # Local agent handoff documents
 AGENTS.md
 HANDOFF.md
+
+# Local automation credentials and Python cache
+gha-creds-*.json
+__pycache__/
+*.pyc
